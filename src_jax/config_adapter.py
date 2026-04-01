@@ -243,6 +243,53 @@ def make_experiment_name(config_path: Path, network_class: str, precision: str, 
     return f"{stem}-{network_class}-{precision}-{suffix}"
 
 
+def _build_source_config(
+    source_cfg: dict[str, Any],
+    *,
+    config_path: Path,
+    cfg_seed: int,
+) -> tuple[bool, dict[str, Any]]:
+    enabled = bool(source_cfg.get("enabled", False))
+    if not enabled:
+        return False, {}
+
+    kind = str(source_cfg.get("kind", "gmm_moe1")).strip() or "gmm_moe1"
+    if kind != "gmm_moe1":
+        raise ValueError(f"Unsupported source.kind for JAX adapter: {kind}")
+
+    gmm_stats_path = resolve_repo_value(source_cfg.get("gmm_stats_path"), config_path=config_path)
+    if not gmm_stats_path:
+        raise ValueError("source.gmm_stats_path is required when source.enabled=true.")
+
+    return True, {
+        "enabled": True,
+        "kind": kind,
+        "gmm_stats_path": str(gmm_stats_path),
+        "num_modes": int(source_cfg.get("num_modes", 4)),
+        "condition_dim": int(source_cfg.get("condition_dim", 64)),
+        "hidden_channels": int(source_cfg.get("hidden_channels", 128)),
+        "router_temperature": float(source_cfg.get("router_temperature", 1.0)),
+        "soft_moe": bool(source_cfg.get("soft_moe", True)),
+        "balance_loss_weight": float(source_cfg.get("balance_loss_weight", 1e-2)),
+        "entropy_loss_weight": float(source_cfg.get("entropy_loss_weight", 1e-3)),
+        "var_kl_loss_weight": float(source_cfg.get("var_kl_loss_weight", 1e-3)),
+        "target_variance": float(source_cfg.get("target_variance", 1.0)),
+        "logvar_min": float(source_cfg.get("logvar_min", -8.0)),
+        "logvar_max": float(source_cfg.get("logvar_max", 4.0)),
+        "var_floor": float(source_cfg.get("var_floor", 1e-5)),
+        "posterior_eps": float(source_cfg.get("posterior_eps", 1e-6)),
+        "weight_prior": float(source_cfg.get("weight_prior", 1e-2)),
+        "em_iters": int(source_cfg.get("em_iters", 100)),
+        "em_tol": float(source_cfg.get("em_tol", 1e-4)),
+        "em_restarts": int(source_cfg.get("em_restarts", 3)),
+        "dead_count_threshold": float(source_cfg.get("dead_count_threshold", 1.0)),
+        "active_mode_fraction_threshold": float(
+            source_cfg.get("active_mode_fraction_threshold", 0.01)
+        ),
+        "source_seed": int(source_cfg.get("source_seed", cfg_seed + 17)),
+    }
+
+
 def build_backend_config_dict(
     repo_cfg: DictConfig,
     *,
@@ -266,6 +313,7 @@ def build_backend_config_dict(
     misc_cfg = cfg_to_dict(repo_cfg.get("misc"))
     training_cfg = cfg_to_dict(repo_cfg.get("training"))
     eval_cfg = cfg_to_dict(repo_cfg.get("eval"))
+    source_cfg = cfg_to_dict(repo_cfg.get("source"))
 
     stage1_params = dict(stage1_cfg.get("params", {}))
     stage2_params = dict(stage2_cfg.get("params", {}))
@@ -291,6 +339,12 @@ def build_backend_config_dict(
     )
     guidance_scale = float(guidance_cfg.get("scale", 1.0))
     cfg_seed = seed if seed is not None else int(training_cfg.get("global_seed", 0))
+    source_enabled, backend_source_cfg = _build_source_config(
+        source_cfg,
+        config_path=config_path,
+        cfg_seed=cfg_seed,
+    )
+    interface_class = "sit_gmm_moe1" if source_enabled else "sit"
 
     stage1_encoder_model = resolve_repo_value(
         stage1_params.get("encoder_params", {}).get("dinov2_path") or stage1_params.get("encoder_config_path"),
@@ -382,7 +436,7 @@ def build_backend_config_dict(
             "attn_w_dropout": float(stage2_params.get("attn_w_dropout", 0.0)),
             "attn_o_dropout": float(stage2_params.get("attn_o_dropout", 0.0)),
         },
-        "interface_class": "sit",
+        "interface_class": interface_class,
         "interface": {
             "train_time_dist_type": str(transport_params.get("time_dist_type", "uniform")),
             "t_mu": 0.0,
@@ -467,6 +521,9 @@ def build_backend_config_dict(
         "guidance_method": str(guidance_cfg.get("method", "cfg")),
         "guidance_scale": guidance_scale,
     }
+
+    if source_enabled:
+        backend_cfg["interface"]["source"] = backend_source_cfg
 
     if network_class == "lightning_ddt":
         hidden_size = stage2_params.get("hidden_size", [1152, 2048])

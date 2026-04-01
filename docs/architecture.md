@@ -11,12 +11,12 @@ Representation Autoencoders (RAE):
    sampled latents back into images through the Stage 1 decoder.
 
 The XLA branch focuses on TPU execution for Stage 2 training and sampling, with
-optional host-side FID scoring. The current `jax-vae-sit-celebahq256` branch
+optional host-side FID scoring. The current `jax-vae-sit-moe1-celebahq256` branch
 also adds a thin JAX/NNX compatibility layer under `src_jax/` that maps the
 repository's existing YAML schema into a pinned `diffuse_nnx` backend,
 including backend-native FID reference building, held-out validation loss, a
 compatibility patch that keeps backend EMA initialization aligned with the live
-model weights, and the public backend-native `StabilityVAE + SiT-B`
+model weights, and the public backend-native `StabilityVAE + SiT-B + moe1`
 CelebA-HQ flow.
 
 ## End-to-End Data Flow
@@ -82,13 +82,16 @@ repo-facing aliases:
 
 This keeps the DH path available for manual config-driven experiments while the
 branch's public notebook flow uses the single-tower `SiT-B` surface. The JAX
-adapter keeps the same `sit` transport interface for both.
+adapter keeps the same `sit` transport interface for both, and can switch to a
+learned-source `sit_gmm_moe1` interface when the repo config adds a `source`
+block.
 
 Design highlights:
 
 - latent input instead of RGB input
 - timestep embedding through Gaussian Fourier features
 - class conditioning through `LabelEmbedder`
+- optional learned source initialization through `GMM + SourceMoE`
 - rotary embeddings, RMSNorm, SwiGLU, and qk-norm as configurable options
 - support for classifier-free guidance and autoguidance during sampling
 
@@ -144,6 +147,9 @@ the TPU loop.
   reconstruct an image folder through the JAX RAE path
 - [src_jax/build_stage1_stats.py](../src_jax/build_stage1_stats.py):
   compute dataset-specific Stage 1 latent normalization stats
+- [src_jax/build_source_gmm.py](../src_jax/build_source_gmm.py):
+  encode an `ImageFolder` through `stage1.StabilityVAE`, flatten the scaled
+  latents, fit a diagonal GMM, and write the `source.gmm_stats_path` artifact
 - [src_jax/export_celebahq_hf.py](../src_jax/export_celebahq_hf.py):
   export the Hugging Face dataset `eurecom-ds/celeba-hq-256` into the `ImageFolder`
   layout still expected by the current JAX training notebooks
@@ -170,7 +176,8 @@ The JAX path is intentionally kept thin:
 
 - [src_jax/vendor.py](../src_jax/vendor.py): bootstraps
   `diffuse_nnx` into `~/.cache/rae_jax/diffuse_nnx` and pins commit
-  `023afd23c7b62a8cdb00e840b36a4ab8fc970bba`
+  `023afd23c7b62a8cdb00e840b36a4ab8fc970bba`, then overlays the repo-owned
+  `moe1` backend extensions with a manifest hash plus file lock
 - [src_jax/config_adapter.py](../src_jax/config_adapter.py):
   translates the repository's OmegaConf YAML into the backend config expected
   by NNX, mapping `SiTDH` to `lightning_ddt`, mapping `SiT` to
@@ -181,9 +188,13 @@ The JAX path is intentionally kept thin:
   training interface
 - [src_jax/stage2_runtime.py](../src_jax/stage2_runtime.py):
   training, checkpoint loading, sampling, guidance wiring, JAX validation-loss
-  integration, and FID glue for both EMA and optional online-model diagnostics
+  integration, FID glue for both EMA and optional online-model diagnostics, and
+  source-prior-aware preview / sample / FID initialization
 - [src_jax/stage1_runtime.py](../src_jax/stage1_runtime.py):
   shared JAX Stage 1 encoder loading, single-image reconstruction, folder reconstruction, and latent-stat accumulation for both `stage1.RAE` and `stage1.StabilityVAE`
+- [src_jax/moe1/](../src_jax/moe1): reusable diagonal GMM fitting utilities,
+  `SourceMoE`, and source-side regularization losses shared by the repo and the
+  vendored backend overlay
 - [src_jax/export_celebahq_hf.py](../src_jax/export_celebahq_hf.py):
   prepares the public Hugging Face CelebA-HQ source into a repo-compatible
   `ImageFolder` tree for Kaggle and local JAX workflows without manual tar

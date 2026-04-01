@@ -87,8 +87,9 @@ File này giờ có hai alias repo-facing:
 
 Nhờ đó nhánh hiện tại vẫn giữ được đường \texttt{SiTDH} ở mức code/config khi
 cần, đồng thời public notebook flow của CelebA-HQ tập trung vào
-\texttt{StabilityVAE + SiT-B}. Objective trên đường JAX vẫn đi qua interface
-\texttt{sit} cho cả hai dạng backbone.
+\texttt{StabilityVAE + SiT-B + moe1}. Objective trên đường JAX mặc định vẫn đi
+qua interface \texttt{sit} cho cả hai dạng backbone, nhưng có thể chuyển sang
+\texttt{sit\_gmm\_moe1} khi config có block \texttt{source}.
 
 Các đặc điểm quan trọng:
 
@@ -96,6 +97,8 @@ Các đặc điểm quan trọng:
   \item đầu vào là latent thay vì pixel;
   \item embedding thời gian bằng Gaussian Fourier features;
   \item class conditioning bằng \texttt{LabelEmbedder};
+  \item có thể thay pure Gaussian source bằng learned source
+  \texttt{GMM + SourceMoE};
   \item tùy chọn ROPE, RMSNorm, SwiGLU, qk-norm;
   \item hỗ trợ classifier-free guidance và autoguidance khi sampling.
 \end{itemize}
@@ -137,15 +140,17 @@ sampling kiểu Euler.
 File & Vai trò \\
 \midrule
 \endhead
-\texttt{src\_jax/vendor.py} & Bootstrap \texttt{diffuse\_nnx} vào \texttt{\~{}/.cache/rae\_jax/diffuse\_nnx} và pin commit \\
-\texttt{src\_jax/config\_adapter.py} & Chuyển YAML OmegaConf của repo sang config backend NNX, map \texttt{SiT}/\texttt{SiTDH}/\texttt{StabilityVAE} sang backend phù hợp, forward \texttt{random\_flip} / prefetch knobs, và mặc định bật flip cho config train CelebA-HQ \\
-\texttt{src\_jax/stage2\_runtime.py} & Train, sampling, load checkpoint PyTorch hoặc Orbax, JAX validation-loss integration, FID glue, wandb bridge \\
+\texttt{src\_jax/vendor.py} & Bootstrap \texttt{diffuse\_nnx} vào \texttt{\~{}/.cache/rae\_jax/diffuse\_nnx}, pin commit, rồi overlay các file backend cho \texttt{moe1} với manifest hash và lock file \\
+\texttt{src\_jax/config\_adapter.py} & Chuyển YAML OmegaConf của repo sang config backend NNX, map \texttt{SiT}/\texttt{SiTDH}/\texttt{StabilityVAE} sang backend phù hợp, forward \texttt{random\_flip} / prefetch knobs, và chuyển từ \texttt{sit} sang \texttt{sit\_gmm\_moe1} khi bật \texttt{source.enabled} \\
+\texttt{src\_jax/stage2\_runtime.py} & Train, sampling, load checkpoint PyTorch hoặc Orbax, JAX validation-loss integration, FID glue, wandb bridge, và source-prior-aware preview / sample / FID \\
  \texttt{src\_jax/stage1\_runtime.py} & Load encoder Stage 1 JAX, reconstruction một ảnh, reconstruction cả thư mục và tích lũy latent stat cho cả \texttt{RAE} lẫn \texttt{StabilityVAE} \\
  \texttt{src\_jax/build\_stage1\_stats.py} & Tạo file \texttt{stat.pt} theo định dạng mean / var để dùng lại cho Stage 1 \\
+ \texttt{src\_jax/build\_source\_gmm.py} & Encode dữ liệu qua \texttt{stage1.StabilityVAE}, flatten latent đã scaled, fit diagonal GMM, và ghi artifact cho block \texttt{source} \\
  \texttt{src\_jax/export\_celebahq\_hf.py} & Download \texttt{eurecom-ds/celeba-hq-256} từ Hugging Face rồi export thành cây \texttt{ImageFolder} cho pipeline JAX hiện tại \\
  \texttt{src\_jax/export\_celebahq\_tfds.py} & Export TFDS \texttt{celeb\_a\_hq/256} thành cây \texttt{ImageFolder} cho pipeline JAX hiện tại và ép protobuf runtime kiểu Python để tránh lỗi import TFDS trên Kaggle \\
  \texttt{src\_jax/build\_fid\_stats.py} & Build \texttt{fid\_ref} bằng đúng detector Flax Inception của backend JAX \\
  \texttt{src\_jax/reconstruct\_folder.py} & Export reconstruction cho cả thư mục ảnh theo pipeline JAX \\
+\texttt{src\_jax/moe1/} & Chứa GMM utils, \texttt{SourceMoE}, và source-side losses dùng chung giữa repo và backend overlay \\
 \texttt{src\_jax/hf\_utils.py} & Upload file hoặc thư mục lên Hugging Face \\
 \bottomrule
 \end{longtable}
@@ -183,7 +188,7 @@ không còn bắt đầu từ một EMA cold-start sai ngay từ step đầu.
 
 \subsection{Checkpoint và tương thích trọng số}
 
-Với branch \texttt{jax-vae-sit-celebahq256}, checkpoint Stage 2 phải khớp shape
+Với branch \texttt{jax-vae-sit-moe1-celebahq256}, checkpoint Stage 2 phải khớp shape
 của backbone đã chọn:
 
 \begin{itemize}[leftmargin=1.5em]

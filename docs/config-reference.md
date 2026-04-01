@@ -8,6 +8,7 @@ parses these top-level sections:
 
 - `stage_1`
 - `stage_2`
+- `source`
 - `transport`
 - `sampler`
 - `guidance`
@@ -24,6 +25,7 @@ and translates them into the backend configuration expected by NNX.
 | --- | --- | --- | --- | --- | --- |
 | `stage_1` | yes | yes | yes | yes | yes |
 | `stage_2` | yes | yes | yes | no | no |
+| `source` | no | no | no | no | no |
 | `transport` | yes | no | no | no | no |
 | `sampler` | yes | yes | yes | no | no |
 | `guidance` | yes | yes | yes | no | no |
@@ -37,6 +39,7 @@ JAX adapter coverage:
 | --- | --- | --- | --- | --- |
 | `stage_1` | yes | yes | yes | yes |
 | `stage_2` | yes | yes | yes | no |
+| `source` | yes | yes | yes | no |
 | `transport` | yes | yes | yes | no |
 | `sampler` | yes | yes | yes | no |
 | `guidance` | yes | yes | yes | no |
@@ -193,6 +196,75 @@ For the JAX adapter:
   `lightning_dit`
 - the adapter keeps `interface_class: sit`, so the transport objective stays
   on the SiT path for both the DH/two-tower and single-tower backbones
+
+## `source`
+
+This block is optional and only affects the JAX adapter path.
+
+Typical shape:
+
+```yaml
+source:
+  enabled: true
+  kind: gmm_moe1
+  gmm_stats_path: artifacts/celebahq256_source_gmm.npz
+  num_modes: 4
+  condition_dim: 64
+  hidden_channels: 128
+  router_temperature: 1.0
+  soft_moe: true
+  balance_loss_weight: 1.0e-2
+  entropy_loss_weight: 1.0e-3
+  var_kl_loss_weight: 1.0e-3
+  target_variance: 1.0
+  logvar_min: -8.0
+  logvar_max: 4.0
+  var_floor: 1.0e-5
+  posterior_eps: 1.0e-6
+  weight_prior: 1.0e-2
+  em_iters: 100
+  em_tol: 1.0e-4
+  em_restarts: 3
+  dead_count_threshold: 1.0
+  active_mode_fraction_threshold: 0.01
+```
+
+Meaning:
+
+- `enabled`: switch the adapter from `sit` to `sit_gmm_moe1`
+- `gmm_stats_path`: offline diagonal GMM artifact produced by
+  `src_jax/build_source_gmm.py`
+- `num_modes`: number of GMM components and SourceMoE experts
+- `condition_dim` / `hidden_channels`: SourceMoE width controls
+- `router_temperature`: router softmax temperature
+- `soft_moe`: keep the router mixture soft instead of straight-through hard
+- `balance_loss_weight`, `entropy_loss_weight`, `var_kl_loss_weight`: weights
+  for the source-side auxiliary losses
+- `target_variance`, `logvar_min`, `logvar_max`, `var_floor`: variance control
+  for the learned source
+- `posterior_eps`: epsilon for posterior numerics
+- `weight_prior`, `em_iters`, `em_tol`, `em_restarts`,
+  `dead_count_threshold`, `active_mode_fraction_threshold`: offline GMM knobs
+
+Build the artifact with:
+
+```bash
+python3 src_jax/build_source_gmm.py \
+  --config <stage1_or_stage2_config> \
+  --input <train_imagefolder> \
+  --output <source_gmm_artifact.npz> \
+  --num-modes 4
+```
+
+Artifact contract:
+
+- the script uses `stage1.StabilityVAE.encode()` output directly, so the latent
+  scale already matches the backend `0.18215` convention
+- the fitting pipeline is `encode -> flatten -> standardize -> fit GMM`
+- the artifact records `latent_semantics=stabilityvae_scaled_output`,
+  `vae_scale_factor=0.18215`, `active_modes`, and `train_nll`
+- train-time conditioning samples a hard mode from the posterior `q(k|x)`,
+  while inference / preview / FID sample a hard mode from the prior `pi`
 
 ## `transport`
 

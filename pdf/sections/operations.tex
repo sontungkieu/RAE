@@ -119,20 +119,20 @@ python3 src_jax/train.py \
   \texttt{vaes-jax-celebahq-kaggle.ipynb}. Bản này vẫn dùng
   \texttt{src\_jax/export\_celebahq\_hf.py}, nhưng đổi Stage 1 sang
   \texttt{stage1.StabilityVAE}, đổi Stage 2 sang single-tower
-  \texttt{SiT-B}, và bỏ hẳn bước bootstrap identity stat cùng pass
-  \texttt{build\_stage1\_stats.py} bắt buộc.
+  \texttt{SiT-B}, thêm learned source \texttt{moe1}, bỏ hẳn bước bootstrap
+  identity stat, và chèn pass \texttt{build\_source\_gmm.py} trước cell train.
   \item Nếu phần cứng là Kaggle \texttt{TPU v5e-8} và cần flow VAE đó trên TPU,
   dùng \texttt{vaes-jax-celebahq-kaggle-tpuv5e8-sitb.ipynb}. Notebook này giữ
   toàn bộ fix Kaggle/JAX hiện có, bật \texttt{training.random\_flip=true},
   viết config Stage 2 thành
-  \texttt{CelebAHQ256\_SiT-B\_StabilityVAE\_jax\_tpuv5e8.yaml}, và dùng shape
-  single-tower \texttt{hidden\_size=768}, \texttt{depth=12},
+  \texttt{CelebAHQ256\_SiT-B\_StabilityVAE\_moe1\_jax\_tpuv5e8.yaml}, và dùng
+  shape single-tower \texttt{hidden\_size=768}, \texttt{depth=12},
   \texttt{num\_heads=12}.
-  \item Nếu đã có run Orbax của flow \texttt{StabilityVAE + SiT-B} và cần
+  \item Nếu đã có run Orbax của flow \texttt{StabilityVAE + SiT-B + moe1} và cần
   resume, dùng notebook
   \texttt{vaes-jax-celebahq-kaggle-tpuv5e8-sitb-resume.ipynb}. Notebook này
   dùng cùng pattern resume-only của bản DH, nhưng tự tìm thư mục
-  \texttt{CelebAHQ256\_SiT-B\_StabilityVAE\_jax\_tpuv5e8-*} mới nhất.
+  \texttt{CelebAHQ256\_SiT-B\_StabilityVAE\_moe1\_jax\_tpuv5e8-*} mới nhất.
   \item Nếu cần huấn luyện Stage 1 kiểu GAN đầy đủ, hiện vẫn phải xem đây là
   phần chưa được JAX hóa trong branch này.
 \end{itemize}

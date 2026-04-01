@@ -1,9 +1,13 @@
 from __future__ import annotations
 
+import hashlib
+import json
 import os
+import shutil
 import subprocess
 import sys
 import textwrap
+import time
 from pathlib import Path
 
 
@@ -11,6 +15,12 @@ BACKEND_REPO_URL = "https://github.com/willisma/diffuse_nnx"
 BACKEND_COMMIT = "023afd23c7b62a8cdb00e840b36a4ab8fc970bba"
 BACKEND_ENV_VAR = "RAE_JAX_BACKEND_DIR"
 DEFAULT_BACKEND_DIR = Path.home() / ".cache" / "rae_jax" / "diffuse_nnx"
+OVERLAY_MANIFEST_NAME = ".rae_jax_overlay_manifest.json"
+OVERLAY_LOCK_NAME = ".rae_jax_overlay.lock"
+FORCE_REBUILD_ENV_VAR = "RAE_JAX_REBUILD_BACKEND"
+SOURCE_DIR = Path(__file__).resolve().parent
+OVERLAY_SOURCE_DIR = SOURCE_DIR / "backend_overlay" / "diffuse_nnx"
+MOE1_SOURCE_DIR = SOURCE_DIR / "moe1"
 
 
 def _run(cmd: list[str], cwd: Path | None = None) -> None:
@@ -160,6 +170,119 @@ def _apply_backend_compat_patches(backend_dir: Path) -> None:
         ),
     )
 
+    initialize_path = backend_dir / "utils" / "initialize.py"
+    if initialize_path.exists():
+        _patch_backend_file(
+            initialize_path,
+            "from interfaces import continuous, discrete, repa\n",
+            "from interfaces import continuous, continuous_moe1, discrete, repa\n",
+        )
+        _patch_backend_file(
+            initialize_path,
+            (
+                "INTERFACE_REGISTRY = {\n"
+                "    'sit': continuous.SiTInterface,\n"
+                "    'edm': continuous.EDMInterface,\n"
+                "    'mean_flow': continuous.MeanFlowInterface,\n"
+                "}\n"
+            ),
+            (
+                "INTERFACE_REGISTRY = {\n"
+                "    'sit': continuous.SiTInterface,\n"
+                "    'sit_gmm_moe1': continuous_moe1.SiTGMMMoe1Interface,\n"
+                "    'edm': continuous.EDMInterface,\n"
+                "    'mean_flow': continuous.MeanFlowInterface,\n"
+                "}\n"
+            ),
+        )
+
+
+def _iter_overlay_files() -> list[tuple[Path, Path]]:
+    mappings: list[tuple[Path, Path]] = []
+    for base_source, relative_target in (
+        (OVERLAY_SOURCE_DIR, Path(".")),
+        (MOE1_SOURCE_DIR, Path("moe1")),
+    ):
+        if not base_source.exists():
+            continue
+        for source_path in sorted(path for path in base_source.rglob("*") if path.is_file()):
+            mappings.append((source_path, relative_target / source_path.relative_to(base_source)))
+    return mappings
+
+
+def _compute_overlay_hash(files: list[tuple[Path, Path]]) -> str:
+    digest = hashlib.sha256()
+    for source_path, relative_target in files:
+        digest.update(relative_target.as_posix().encode("utf-8"))
+        digest.update(b"\0")
+        digest.update(source_path.read_bytes())
+        digest.update(b"\0")
+    return digest.hexdigest()
+
+
+def _load_overlay_manifest(path: Path) -> dict[str, str] | None:
+    if not path.exists():
+        return None
+    try:
+        return json.loads(path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError:
+        return None
+
+
+def _acquire_overlay_lock(lock_path: Path, *, timeout_sec: float = 60.0) -> None:
+    deadline = time.time() + timeout_sec
+    while True:
+        try:
+            fd = os.open(lock_path, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
+        except FileExistsError:
+            if time.time() >= deadline:
+                raise TimeoutError(f"Timed out waiting for backend overlay lock: {lock_path}")
+            time.sleep(0.1)
+            continue
+        else:
+            os.close(fd)
+            return
+
+
+def _release_overlay_lock(lock_path: Path) -> None:
+    try:
+        lock_path.unlink()
+    except FileNotFoundError:
+        return
+
+
+def _sync_backend_overlay(backend_dir: Path) -> None:
+    overlay_files = _iter_overlay_files()
+    if not overlay_files:
+        return
+
+    overlay_hash = _compute_overlay_hash(overlay_files)
+    manifest_path = backend_dir / OVERLAY_MANIFEST_NAME
+    force_rebuild = os.environ.get(FORCE_REBUILD_ENV_VAR, "").strip() not in {"", "0", "false", "False"}
+    manifest = _load_overlay_manifest(manifest_path)
+    if not force_rebuild and manifest is not None and manifest.get("overlay_hash") == overlay_hash:
+        return
+
+    lock_path = backend_dir / OVERLAY_LOCK_NAME
+    _acquire_overlay_lock(lock_path)
+    try:
+        manifest = _load_overlay_manifest(manifest_path)
+        if not force_rebuild and manifest is not None and manifest.get("overlay_hash") == overlay_hash:
+            return
+
+        for source_path, relative_target in overlay_files:
+            target_path = backend_dir / relative_target
+            target_path.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(source_path, target_path)
+
+        manifest_payload = {
+            "overlay_hash": overlay_hash,
+            "backend_commit": BACKEND_COMMIT,
+        }
+        manifest_path.write_text(json.dumps(manifest_payload, indent=2, sort_keys=True), encoding="utf-8")
+    finally:
+        _release_overlay_lock(lock_path)
+
 
 def resolve_backend_dir(explicit_dir: str | None = None) -> Path:
     raw = explicit_dir or os.environ.get(BACKEND_ENV_VAR)
@@ -181,6 +304,7 @@ def ensure_backend(explicit_dir: str | None = None) -> Path:
         _run(["git", "-C", str(backend_dir), "checkout", BACKEND_COMMIT])
 
     _apply_backend_compat_patches(backend_dir)
+    _sync_backend_overlay(backend_dir)
 
     return backend_dir
 

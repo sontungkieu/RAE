@@ -103,6 +103,85 @@ misc:
         self.assertEqual(backend_cfg["network"]["num_heads"], 12)
         self.assertEqual(backend_cfg["interface_class"], "sit")
 
+    def test_build_backend_config_maps_source_block_to_moe1_interface(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            gmm_stats_path = Path(tmp_dir) / "source_stats.npz"
+            np.savez(
+                gmm_stats_path,
+                log_pi=np.zeros((4,), dtype=np.float32),
+                mu=np.zeros((4, 8), dtype=np.float32),
+                var=np.ones((4, 8), dtype=np.float32),
+                latent_mean=np.zeros((8,), dtype=np.float32),
+                latent_std=np.ones((8,), dtype=np.float32),
+                standardize_eps=np.float32(1e-6),
+                latent_shape=np.asarray([2, 2, 2], dtype=np.int32),
+                layout=np.asarray("NHWC"),
+                sample_posterior=np.asarray(True),
+                latent_semantics=np.asarray("stabilityvae_scaled_output"),
+                vae_scale_factor=np.float32(0.18215),
+                count=np.int64(32),
+                num_modes=np.int32(4),
+                active_modes=np.int32(2),
+                train_nll=np.float32(1.23),
+                active_mode_fraction_threshold=np.float32(0.01),
+                final_counts=np.asarray([12, 10, 6, 4], dtype=np.float32),
+                n_iter=np.int32(7),
+            )
+            config_path = self._write_temp_config(
+                f"""
+stage_1:
+  target: stage1.StabilityVAE
+  params:
+    sample_size: 256
+    latent_channels: 4
+    downsample_factor: 8
+stage_2:
+  target: stage2.models.SiT.SiT
+  params:
+    input_size: 32
+    patch_size: 2
+    in_channels: 4
+    hidden_size: 768
+    depth: 12
+    num_heads: 12
+    num_classes: 1
+transport:
+  params:
+    time_dist_type: uniform
+sampler:
+  params:
+    sampling_method: euler
+misc:
+  latent_size: [4, 32, 32]
+  num_classes: 1
+source:
+  enabled: true
+  kind: gmm_moe1
+  gmm_stats_path: {gmm_stats_path.as_posix()}
+  num_modes: 4
+  condition_dim: 32
+  hidden_channels: 96
+"""
+            )
+            repo_cfg, resolved_config_path = load_repo_config(config_path)
+            backend_cfg = build_backend_config_dict(
+                repo_cfg,
+                config_path=resolved_config_path,
+                mode="train",
+                data_path="/tmp/celebahq256",
+                precision="bf16",
+                seed=7,
+                num_train_samples=30_000,
+                enable_eval=False,
+            )
+
+            self.assertEqual(backend_cfg["interface_class"], "sit_gmm_moe1")
+            self.assertIn("source", backend_cfg["interface"])
+            self.assertEqual(backend_cfg["interface"]["source"]["gmm_stats_path"], str(gmm_stats_path))
+            self.assertEqual(backend_cfg["interface"]["source"]["num_modes"], 4)
+            self.assertEqual(backend_cfg["interface"]["source"]["condition_dim"], 32)
+            self.assertEqual(backend_cfg["interface"]["source"]["hidden_channels"], 96)
+
     def test_npz_fid_reference_is_converted_to_pickle(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir:
             ref_path = Path(tmp_dir) / "ref_stats.npz"

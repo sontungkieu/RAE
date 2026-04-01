@@ -6,8 +6,12 @@ wandb
 *.zip*
 .vscode/
 AGENTS.md
+.codex
+.codex/
+plan.txt
 
 .DS_store
+.DS_Store
 samples
 results
 pretrained_models

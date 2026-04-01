@@ -88,6 +88,20 @@ Trong đó file bootstrap identity stat chỉ cần chứa \texttt{mean = 0} và
 \texttt{var = 1}. Mục tiêu là để pass tính stat đầu tiên không bị chuẩn hóa theo
 dataset khác, nhưng vẫn thỏa contract load stat của backend NNX.
 
+Nếu muốn dùng learned source kiểu \texttt{moe1}, artifact GMM được build bằng:
+
+\begin{lstlisting}[style=rae]
+python3 src_jax/build_source_gmm.py \
+  --config <stage1_or_stage2_config> \
+  --input <train_imagefolder> \
+  --output <source_gmm_artifact.npz> \
+  --num-modes 4
+\end{lstlisting}
+
+Artifact này dùng trực tiếp output \texttt{encoder.encode()} của
+\texttt{StabilityVAE}, nên latent đã ở đúng scale factor \texttt{0.18215} của
+backend; pipeline fit là \texttt{encode -> flatten -> standardize -> fit GMM}.
+
 \subsection{Block \texttt{stage\_2}}
 
 Một số key quan trọng:
@@ -110,7 +124,55 @@ Một số key quan trọng:
 Với branch này, \texttt{SiTDH} sẽ được ánh xạ sang backend
 \texttt{lightning\_ddt}, còn \texttt{SiT} sẽ được ánh xạ sang
 \texttt{lightning\_dit}. Adapter vẫn giữ \texttt{interface\_class=sit} cho cả
-hai, nên objective trên đường JAX vẫn là SiT / flow matching.
+hai khi không có block \texttt{source}. Nếu \texttt{source.enabled=true},
+adapter đổi interface sang \texttt{sit\_gmm\_moe1}; backbone \texttt{SiT} vẫn
+giữ nguyên nhưng pure Gaussian source được thay bằng learned source
+\texttt{GMM + SourceMoE}.
+
+\subsection{Block \texttt{source}}
+
+Block này chỉ áp dụng cho đường JAX:
+
+\begin{lstlisting}[style=rae]
+source:
+  enabled: true
+  kind: gmm_moe1
+  gmm_stats_path: artifacts/celebahq256_source_gmm.npz
+  num_modes: 4
+  condition_dim: 64
+  hidden_channels: 128
+  router_temperature: 1.0
+  soft_moe: true
+  balance_loss_weight: 1.0e-2
+  entropy_loss_weight: 1.0e-3
+  var_kl_loss_weight: 1.0e-3
+  target_variance: 1.0
+  logvar_min: -8.0
+  logvar_max: 4.0
+  var_floor: 1.0e-5
+  posterior_eps: 1.0e-6
+  weight_prior: 1.0e-2
+  em_iters: 100
+  em_tol: 1.0e-4
+  em_restarts: 3
+  dead_count_threshold: 1.0
+  active_mode_fraction_threshold: 0.01
+\end{lstlisting}
+
+Ý nghĩa chính:
+
+\begin{itemize}[leftmargin=1.5em]
+  \item \texttt{gmm\_stats\_path}: artifact diagonal GMM build offline;
+  \item \texttt{num\_modes}: số mode của GMM và số expert của \texttt{SourceMoE};
+  \item \texttt{condition\_dim}, \texttt{hidden\_channels}: độ rộng của
+  \texttt{SourceMoE};
+  \item \texttt{balance\_loss\_weight}, \texttt{entropy\_loss\_weight},
+  \texttt{var\_kl\_loss\_weight}: trọng số auxiliary losses phía source;
+  \item \texttt{logvar\_min}, \texttt{logvar\_max}, \texttt{var\_floor}: chặn
+  variance của source học được;
+  \item các knob \texttt{em\_*} và \texttt{dead\_count\_threshold}: điều khiển
+  quá trình fit GMM offline.
+\end{itemize}
 
 \subsection{Block \texttt{guidance}}
 
