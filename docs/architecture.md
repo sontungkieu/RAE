@@ -11,13 +11,13 @@ Representation Autoencoders (RAE):
    sampled latents back into images through the Stage 1 decoder.
 
 The XLA branch focuses on TPU execution for Stage 2 training and sampling, with
-optional host-side FID scoring. The current `jax-vae-sit-moe1` branch
+optional host-side FID scoring. The current `jax-vae-sit-moe1-celebahq256` branch
 also adds a thin JAX/NNX compatibility layer under `src_jax/` that maps the
 repository's existing YAML schema into a pinned `diffuse_nnx` backend,
 including backend-native FID reference building, held-out validation loss, a
 compatibility patch that keeps backend EMA initialization aligned with the live
 model weights, and the public backend-native `StabilityVAE + SiT-B + moe1`
-CelebA flow.
+CelebA-HQ flow.
 
 ## End-to-End Data Flow
 
@@ -65,8 +65,7 @@ this means:
 - the default backend-compatible `vae_trial1.pkl` is materialized locally from
   `stabilityai/sd-vae-ft-mse` on first use, unless
   `stage_1.params.pretrained_path` already points at an existing pickle
-- Stage 1 latent-stat bootstrap is optional instead of mandatory for the public
-  CelebA notebook flow
+- Stage 1 latent-stat bootstrap is optional instead of mandatory
 - the adapter can infer a default latent geometry of `[4, 32, 32]` at
   `256x256`
 
@@ -82,8 +81,7 @@ repo-facing aliases:
   [LightningDiT](../src/stage2/models/lightningDiT.py)
 
 This keeps the DH path available for manual config-driven experiments while the
-branch's public notebook flow uses the single-tower `SiT-B` surface for the
-CelebA VAE recipe. The JAX
+branch's public notebook flow uses the single-tower `SiT-B` surface. The JAX
 adapter keeps the same `sit` transport interface for both, and can switch to a
 learned-source `sit_gmm_moe1` interface when the repo config adds a `source`
 block.
@@ -154,11 +152,11 @@ the TPU loop.
   latents, fit a diagonal GMM, and write the `source.gmm_stats_path` artifact
 - [src_jax/export_celebahq_hf.py](../src_jax/export_celebahq_hf.py):
   export the Hugging Face dataset `eurecom-ds/celeba-hq-256` into the `ImageFolder`
-  layout for manual CelebA-HQ JAX experiments
+  layout still expected by the current JAX training notebooks
 - [src_jax/export_celebahq_tfds.py](../src_jax/export_celebahq_tfds.py):
-  export TFDS `celeb_a_hq/256` into the `ImageFolder` layout for manual
-  CelebA-HQ JAX experiments, while forcing the Python protobuf runtime before
-  importing TFDS to avoid Kaggle descriptor crashes
+  export TFDS `celeb_a_hq/256` into the `ImageFolder` layout still expected by
+  the current JAX training notebooks, while forcing the Python protobuf runtime
+  before importing TFDS to avoid Kaggle descriptor crashes
 
 ### FID Utilities
 
@@ -185,9 +183,9 @@ The JAX path is intentionally kept thin:
   by NNX, mapping `SiTDH` to `lightning_ddt`, mapping `SiT` to
   `lightning_dit`, mapping `stage1.StabilityVAE` to the backend-native
   `StabilityVAE` encoder, inferring latent geometry when only Stage 1 is
-  defined, forwarding `random_flip` plus prefetch knobs, defaulting the public
-  CelebA notebook configs to horizontal flips unless overridden, and keeping
-  the `sit` training interface
+  defined, forwarding `random_flip` plus prefetch knobs, defaulting CelebA-HQ
+  train configs to horizontal flips unless overridden, and keeping the `sit`
+  training interface
 - [src_jax/stage2_runtime.py](../src_jax/stage2_runtime.py):
   training, checkpoint loading, sampling, guidance wiring, JAX validation-loss
   integration, FID glue for both EMA and optional online-model diagnostics, and
@@ -199,8 +197,8 @@ The JAX path is intentionally kept thin:
   vendored backend overlay
 - [src_jax/export_celebahq_hf.py](../src_jax/export_celebahq_hf.py):
   prepares the public Hugging Face CelebA-HQ source into a repo-compatible
-  `ImageFolder` tree for manual Kaggle and local JAX workflows without manual
-  tar files
+  `ImageFolder` tree for Kaggle and local JAX workflows without manual tar
+  files
 - [src_jax/export_celebahq_tfds.py](../src_jax/export_celebahq_tfds.py):
   prepares the manual TFDS CelebA-HQ source into a repo-compatible
   `ImageFolder` tree for Kaggle and local JAX workflows
@@ -289,9 +287,9 @@ src_jax/
   sample_ddp.py
   stage1_sample.py
   push_hf.py
-vaes-jax-celeba-kaggle-moe1.ipynb
-vaes-jax-celeba-kaggle-tpuv5e8-sitb-moe1.ipynb
-vaes-jax-celeba-kaggle-tpuv5e8-sitb-moe1-resume.ipynb
+vaes-jax-celebahq-kaggle-moe1.ipynb
+vaes-jax-celebahq-kaggle-tpuv5e8-sitb-moe1.ipynb
+vaes-jax-celebahq-kaggle-tpuv5e8-sitb-moe1-resume.ipynb
 ```
 
 ## Checkpoint Compatibility

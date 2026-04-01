@@ -9,9 +9,9 @@ and the lightweight JAX/NNX adapter shipped in `src_jax/`.
 - [Workflows](./workflows.md): practical runbooks for setup, Stage 2 training, sampling, FID, wandb, and Hugging Face upload.
 - [Config Reference](./config-reference.md): YAML schema and which scripts consume each block.
 - [PDF Manual](../pdf/main.pdf): detailed Vietnamese PDF for architecture, workflows, config, and operations.
-- [Kaggle Notebook (StabilityVAE + SiT-B + moe1)](../vaes-jax-celeba-kaggle-moe1.ipynb): end-to-end CelebA notebook for the backend-native VAE flow with an offline `GMM + SourceMoE` source build step.
-- [Kaggle TPU Notebook (StabilityVAE + SiT-B + moe1)](../vaes-jax-celeba-kaggle-tpuv5e8-sitb-moe1.ipynb): `TPU v5e-8` notebook that uses `stage1.StabilityVAE`, single-tower `stage2.models.SiT.SiT`, `training.random_flip=true`, and default `num_workers=16`, `prefetch_factor=4`, `log_rae_latent_stats=true`, `log_activation_stats=true`.
-- [Kaggle TPU Notebook (StabilityVAE + SiT-B + moe1 Resume)](../vaes-jax-celeba-kaggle-tpuv5e8-sitb-moe1-resume.ipynb): resume-only `TPU v5e-8` notebook for the newest `CelebA256_SiT-B_StabilityVAE_moe1_jax_tpuv5e8-*` workdir.
+- [Kaggle Notebook (StabilityVAE + SiT-B + moe1)](../vaes-jax-celebahq-kaggle-moe1.ipynb): end-to-end CelebA-HQ notebook for the backend-native VAE flow with an offline `GMM + SourceMoE` source build step.
+- [Kaggle TPU Notebook (StabilityVAE + SiT-B + moe1)](../vaes-jax-celebahq-kaggle-tpuv5e8-sitb-moe1.ipynb): `TPU v5e-8` notebook that uses `stage1.StabilityVAE`, single-tower `stage2.models.SiT.SiT`, `training.random_flip=true`, and a generated Stage 2 config with `source.enabled=true`.
+- [Kaggle TPU Notebook (StabilityVAE + SiT-B + moe1 Resume)](../vaes-jax-celebahq-kaggle-tpuv5e8-sitb-moe1-resume.ipynb): resume-only `TPU v5e-8` notebook for the newest `CelebAHQ256_SiT-B_StabilityVAE_moe1_jax_tpuv5e8-*` workdir.
 
 ## Recommended Reading Order
 
@@ -24,7 +24,7 @@ and the lightweight JAX/NNX adapter shipped in `src_jax/`.
 This branch is centered on two runtime paths:
 
 - `src/`: the existing `torch_xla` TPU path for Stage 2 training, Stage 2 sampling, Stage 1 reconstruction, and host-side FID utilities
-- `src_jax/`: a thin JAX/NNX adapter that keeps the current YAML schema, logs to wandb, can upload workdirs to Hugging Face, and now exposes the public `StabilityVAE + SiT-B + moe1` CelebA notebook flow without forking the whole codebase
+- `src_jax/`: a thin JAX/NNX adapter that keeps the current YAML schema, logs to wandb, can upload workdirs to Hugging Face, and now exposes the public `StabilityVAE + SiT-B + moe1` CelebA-HQ notebook flow without forking the whole codebase
 
 Limitations:
 

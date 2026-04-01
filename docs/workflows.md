@@ -71,10 +71,10 @@ dataset_root/
 ```
 
 For unlabeled one-class datasets, you still need one subdirectory, for example
-after preparing CelebA into `ImageFolder`:
+after exporting CelebA-HQ into `ImageFolder`:
 
 ```text
-celeba256_imgfolder/
+celebahq256_imgfolder/
   train/
     face/
       ...
@@ -191,7 +191,7 @@ Kaggle and keeps metric logging on stdout plus wandb.
 Useful additions:
 
 - `--set training.global_batch_size=256`: override YAML values from the CLI
-- `--set training.prefetch_factor=4`: deepen the host-side train prefetch queue
+- `--set training.prefetch_factor=8`: deepen the host-side train prefetch queue
 - `--set eval.prefetch_factor=4`: do the same for the validation loader
 - `--hf-repo-id <user>/<repo>`: upload the finished workdir to Hugging Face
 - `--workdir <path>`: force an explicit output directory instead of letting the
@@ -433,31 +433,35 @@ python3 src_jax/reconstruct_folder.py \
 This is the simplest way to export a validation reconstruction set before
 building FID references or comparing Stage 1 decoder changes.
 
-### Kaggle CelebA Notebook
+### Kaggle CelebA-HQ Notebook
 
-This branch now keeps one public CelebA Kaggle notebook flow:
+This branch now keeps one public CelebA-HQ Kaggle notebook flow:
 
 - `StabilityVAE + SiT-B`: the single-tower VAE baseline for this branch
 
-The public notebook path now reads the Kaggle dataset
-`jessicali9530/celeba-dataset`, center-crops each image, resizes to `256x256`,
-and materializes the result into `/kaggle/working/celeba256_imgfolder` in the
-same `ImageFolder` layout used by the current JAX runtime. The older
-[`src_jax/export_celebahq_hf.py`](../src_jax/export_celebahq_hf.py) and
-[`src_jax/export_celebahq_tfds.py`](../src_jax/export_celebahq_tfds.py) helpers
-are still available if you specifically want a manual CelebA-HQ export route.
+The default helper script behind that step is
+[`src_jax/export_celebahq_hf.py`](../src_jax/export_celebahq_hf.py). It
+downloads the public Hugging Face dataset `eurecom-ds/celeba-hq-256` into a cache
+directory, then materializes it into `ImageFolder`, because the current JAX
+training/runtime path has not been refactored to consume a Hub dataset
+directly. The older
+[`src_jax/export_celebahq_tfds.py`](../src_jax/export_celebahq_tfds.py) helper
+is still available as a fallback if you specifically want the TFDS
+`celeb_a_hq/256` route with manual tar files; that fallback still forces the
+Python protobuf runtime before importing TFDS to avoid the common Kaggle
+descriptor crash.
 
 If you want the VAE learned-source flow on the same dataset, start from
-[../vaes-jax-celeba-kaggle-moe1.ipynb](../vaes-jax-celeba-kaggle-moe1.ipynb).
-That notebook keeps the same `uv sync` Kaggle flow, but prepares
-`celeba256_imgfolder`, switches Stage 1 to `stage1.StabilityVAE` and Stage 2
-to single-tower `stage2.models.SiT.SiT`, then builds an offline diagonal GMM
+[../vaes-jax-celebahq-kaggle-moe1.ipynb](../vaes-jax-celebahq-kaggle-moe1.ipynb). That
+notebook keeps the same `uv sync` and Hugging Face export-to-`ImageFolder`
+workflow, but switches Stage 1 to `stage1.StabilityVAE` and Stage 2 to
+single-tower `stage2.models.SiT.SiT`, then builds an offline diagonal GMM
 artifact and injects a `source:` block into the generated Stage 2 config. The
 generated artifacts are:
 
-- `configs/stage1/pretrained/CelebA256_StabilityVAE_jax.yaml`
-- `configs/stage2/training/CelebA256_SiT-B_StabilityVAE_moe1_jax.yaml`
-- `/kaggle/working/celeba256_source_gmm.npz`
+- `configs/stage1/pretrained/CelebAHQ256_StabilityVAE_jax.yaml`
+- `configs/stage2/training/CelebAHQ256_SiT-B_StabilityVAE_moe1_jax.yaml`
+- `/kaggle/working/celebahq256_source_gmm.npz`
 
 Key properties of this VAE notebook flow:
 
@@ -474,29 +478,28 @@ Key properties of this VAE notebook flow:
 - sampling, preview images, and online FID start from the learned source prior
   instead of a pure Gaussian latent
 - the final train cell points `--data-path` at
-  `/kaggle/working/celeba256_imgfolder/train` while the generated config keeps
-  `eval.data_path` on `/kaggle/working/celeba256_imgfolder/val`
+  `/kaggle/working/celebahq256_imgfolder` while the generated config keeps
+  `eval.data_path` on `/kaggle/working/celebahq256_imgfolder/val`
 
 For Kaggle `TPU v5e-8`, use
-[../vaes-jax-celeba-kaggle-tpuv5e8-sitb-moe1.ipynb](../vaes-jax-celeba-kaggle-tpuv5e8-sitb-moe1.ipynb).
+[../vaes-jax-celebahq-kaggle-tpuv5e8-sitb-moe1.ipynb](../vaes-jax-celebahq-kaggle-tpuv5e8-sitb-moe1.ipynb).
 That notebook keeps the same TPU/JAX workarounds, writes the Stage 2 config as
-`CelebA256_SiT-B_StabilityVAE_moe1_jax_tpuv5e8.yaml`, keeps
-`--data-path /kaggle/working/celeba256_imgfolder`, and bakes the same
-host-side loader defaults into both the generated YAML and CLI overrides. The
-TPU variants set `training.num_workers=16`, `eval.num_workers=16`,
-`training.prefetch_factor=4`, and `eval.prefetch_factor=4` so the host can
-queue batches more aggressively without editing the cached backend checkout by
-hand. Both public VAE notebooks also write their generated
+`CelebAHQ256_SiT-B_StabilityVAE_moe1_jax_tpuv5e8.yaml`, keeps
+`--data-path /kaggle/working/celebahq256_imgfolder`, and resumes the same
+host-side `prefetch_factor` controls. The TPU variants set
+`--set training.prefetch_factor=8` and `--set eval.prefetch_factor=4` so the
+host can queue batches more aggressively without immediately increasing
+`training.num_workers`. Both public VAE notebooks also write their generated
 Stage 2 configs with `training.log_rae_latent_stats=true` and
 `training.log_activation_stats=true` so latent/VAE diagnostics, SiT activation
 RMS/variance, and source metrics are available by default.
 
 If you already have an Orbax run directory for that VAE flow and want to
 continue training from its latest checkpoint, use
-[../vaes-jax-celeba-kaggle-tpuv5e8-sitb-moe1-resume.ipynb](../vaes-jax-celeba-kaggle-tpuv5e8-sitb-moe1-resume.ipynb).
+[../vaes-jax-celebahq-kaggle-tpuv5e8-sitb-moe1-resume.ipynb](../vaes-jax-celebahq-kaggle-tpuv5e8-sitb-moe1-resume.ipynb).
 That notebook mirrors the resume-only Kaggle TPU pattern used by the DH
 notebook, but searches for the newest
-`CelebA256_SiT-B_StabilityVAE_moe1_jax_tpuv5e8-*` run directory instead. Its
+`CelebAHQ256_SiT-B_StabilityVAE_moe1_jax_tpuv5e8-*` run directory instead. Its
 resume train cell also re-applies `training.log_rae_latent_stats=true` and
 `training.log_activation_stats=true` from the CLI so resumed runs keep the same
 diagnostics enabled by default.

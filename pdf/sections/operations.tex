@@ -115,28 +115,24 @@ python3 src_jax/train.py \
   \texttt{src\_jax/build\_stage1\_stats.py} và \texttt{src\_jax/reconstruct\_folder.py}.
   Các lệnh này có thể dùng YAML chỉ có \texttt{stage\_1}, không cần
   \texttt{stage\_2.target}.
-  \item Nếu chạy trên Kaggle với CelebA, bắt đầu từ notebook
-  \texttt{vaes-jax-celeba-kaggle-moe1.ipynb}. Bản này chuẩn bị trực tiếp
-  \texttt{celeba256\_imgfolder} từ dataset Kaggle, rồi đổi Stage 1 sang
+  \item Nếu chạy trên Kaggle với CelebA-HQ, bắt đầu từ notebook
+  \texttt{vaes-jax-celebahq-kaggle-moe1.ipynb}. Bản này vẫn dùng
+  \texttt{src\_jax/export\_celebahq\_hf.py}, nhưng đổi Stage 1 sang
   \texttt{stage1.StabilityVAE}, đổi Stage 2 sang single-tower
   \texttt{SiT-B}, thêm learned source \texttt{moe1}, bỏ hẳn bước bootstrap
   identity stat, và chèn pass \texttt{build\_source\_gmm.py} trước cell train.
   \item Nếu phần cứng là Kaggle \texttt{TPU v5e-8} và cần flow VAE đó trên TPU,
-  dùng \texttt{vaes-jax-celeba-kaggle-tpuv5e8-sitb-moe1.ipynb}. Notebook này giữ
+  dùng \texttt{vaes-jax-celebahq-kaggle-tpuv5e8-sitb-moe1.ipynb}. Notebook này giữ
   toàn bộ fix Kaggle/JAX hiện có, bật \texttt{training.random\_flip=true},
   viết config Stage 2 thành
-  \texttt{CelebA256\_SiT-B\_StabilityVAE\_moe1\_jax\_tpuv5e8.yaml}, và dùng
+  \texttt{CelebAHQ256\_SiT-B\_StabilityVAE\_moe1\_jax\_tpuv5e8.yaml}, và dùng
   shape single-tower \texttt{hidden\_size=768}, \texttt{depth=12},
-  \texttt{num\_heads=12}. Các cell train mặc định bật
-  \texttt{training.log\_rae\_latent\_stats=true},
-  \texttt{training.log\_activation\_stats=true},
-  \texttt{training.num\_workers=16}, \texttt{eval.num\_workers=16},
-  \texttt{training.prefetch\_factor=4}, và \texttt{eval.prefetch\_factor=4}.
+  \texttt{num\_heads=12}.
   \item Nếu đã có run Orbax của flow \texttt{StabilityVAE + SiT-B + moe1} và cần
   resume, dùng notebook
-  \texttt{vaes-jax-celeba-kaggle-tpuv5e8-sitb-moe1-resume.ipynb}. Notebook này
+  \texttt{vaes-jax-celebahq-kaggle-tpuv5e8-sitb-moe1-resume.ipynb}. Notebook này
   dùng cùng pattern resume-only của bản DH, nhưng tự tìm thư mục
-  \texttt{CelebA256\_SiT-B\_StabilityVAE\_moe1\_jax\_tpuv5e8-*} mới nhất và
+  \texttt{CelebAHQ256\_SiT-B\_StabilityVAE\_moe1\_jax\_tpuv5e8-*} mới nhất và
   ép lại \texttt{training.log\_rae\_latent\_stats=true} cùng
   \texttt{training.log\_activation\_stats=true} khi resume.
   \item Nếu cần huấn luyện Stage 1 kiểu GAN đầy đủ, hiện vẫn phải xem đây là
