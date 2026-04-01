@@ -492,7 +492,9 @@ host can queue batches more aggressively without immediately increasing
 `training.num_workers`. Both public VAE notebooks also write their generated
 Stage 2 configs with `training.log_rae_latent_stats=true` and
 `training.log_activation_stats=true` so latent/VAE diagnostics, SiT activation
-RMS/variance, and source metrics are available by default.
+RMS/variance, and source metrics are available by default. The train/resume
+cells also export `RAE_JAX_REBUILD_BACKEND=1` so Kaggle refreshes the cached
+backend overlay before `sit_gmm_moe1` training starts.
 
 If you already have an Orbax run directory for that VAE flow and want to
 continue training from its latest checkpoint, use
@@ -502,7 +504,8 @@ notebook, but searches for the newest
 `CelebAHQ256_SiT-B_StabilityVAE_moe1_jax_tpuv5e8-*` run directory instead. Its
 resume train cell also re-applies `training.log_rae_latent_stats=true` and
 `training.log_activation_stats=true` from the CLI so resumed runs keep the same
-diagnostics enabled by default.
+diagnostics enabled by default, and it also exports
+`RAE_JAX_REBUILD_BACKEND=1` before calling `src_jax/train.py`.
 
 ## 9. Upload a JAX Run to Hugging Face
 

@@ -82,16 +82,27 @@ class SiTGMMMoe1Interface(SiTInterface):
             rngs=self.source_rngs,
         )
 
+    def _gmm_arrays(self) -> tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray, jnp.ndarray, jnp.ndarray]:
+        # Read the fixed GMM stats through `.value` so JAX sees plain arrays under jit/pjit.
+        return (
+            self.gmm_log_pi.value,
+            self.gmm_mu.value,
+            self.gmm_var.value,
+            self.gmm_latent_mean.value,
+            self.gmm_latent_std.value,
+        )
+
     def _posterior(self, x_data: jnp.ndarray) -> jnp.ndarray:
+        gmm_log_pi, gmm_mu, gmm_var, gmm_latent_mean, gmm_latent_std = self._gmm_arrays()
         x_flat = x_data.reshape((x_data.shape[0], -1))
         posterior = posterior_from_stats(
             x_flat,
-            latent_mean=self.gmm_latent_mean,
-            latent_std=self.gmm_latent_std,
+            latent_mean=gmm_latent_mean,
+            latent_std=gmm_latent_std,
             standardize_eps=self.gmm_standardize_eps,
-            log_pi=self.gmm_log_pi,
-            mu=self.gmm_mu,
-            var=self.gmm_var,
+            log_pi=gmm_log_pi,
+            mu=gmm_mu,
+            var=gmm_var,
         )
         return jax.lax.stop_gradient(posterior)
 
@@ -120,7 +131,8 @@ class SiTGMMMoe1Interface(SiTInterface):
         }
 
     def sample_source_prior(self, shape: tuple[int, ...]) -> jnp.ndarray:
-        pi = jnp.broadcast_to(jnp.exp(self.gmm_log_pi)[None, :], (shape[0], self.num_modes))
+        gmm_log_pi, *_rest = self._gmm_arrays()
+        pi = jnp.broadcast_to(jnp.exp(gmm_log_pi)[None, :], (shape[0], self.num_modes))
         condition_weights = self._sample_modes(pi)
         source, _payload = self._sample_source_from_condition(condition_weights, shape)
         return source
@@ -163,7 +175,8 @@ class SiTGMMMoe1Interface(SiTInterface):
             "loss_fm": loss_fm,
         }
         aux_metrics.update(source_payload["metrics"])
-        aux_metrics["source_prior_max"] = jnp.max(jnp.exp(self.gmm_log_pi))
+        gmm_log_pi, *_rest = self._gmm_arrays()
+        aux_metrics["source_prior_max"] = jnp.max(jnp.exp(gmm_log_pi))
 
         loss_dict = {
             "loss": total_loss,

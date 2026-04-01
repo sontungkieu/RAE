@@ -339,6 +339,9 @@ host queue batch sâu hơn. Cả hai notebook VAE public cũng ghi config Stage 
 với \texttt{training.log\_rae\_latent\_stats=true} và
 \texttt{training.log\_activation\_stats=true} ngay từ đầu để có latent
 diagnostics của VAE, RMS/variance cho activation của SiT, và source metrics theo mặc định.
+Cell train/resume của chúng cũng export \texttt{RAE\_JAX\_REBUILD\_BACKEND=1}
+để session Kaggle luôn refresh cached backend overlay trước khi train với
+\texttt{sit\_gmm\_moe1}.
 
 Nếu đã có run Orbax của flow VAE và cần train tiếp, dùng notebook
 \texttt{vaes-jax-celebahq-kaggle-tpuv5e8-sitb-moe1-resume.ipynb}. Notebook này bám
@@ -346,4 +349,5 @@ theo pattern resume-only của branch, nhưng tìm workdir mới nhất theo pat
 \texttt{CelebAHQ256\_SiT-B\_StabilityVAE\_moe1\_jax\_tpuv5e8-*}. Cell train
 resume cũng truyền lại \texttt{training.log\_rae\_latent\_stats=true} và
 \texttt{training.log\_activation\_stats=true} qua CLI để run resume vẫn giữ
-diagnostics mặc định.
+diagnostics mặc định, đồng thời export \texttt{RAE\_JAX\_REBUILD\_BACKEND=1}
+trước khi gọi \texttt{src\_jax/train.py}.
