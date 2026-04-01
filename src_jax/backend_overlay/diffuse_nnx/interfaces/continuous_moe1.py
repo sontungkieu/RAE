@@ -12,6 +12,10 @@ from moe1.source_losses import balance_loss, entropy_loss, summarize_router, var
 from moe1.source_moe import SourceMoE
 
 
+class Buffer(nnx.Variable):
+    """Non-trainable container for fixed GMM statistics."""
+
+
 class SiTGMMMoe1Interface(SiTInterface):
     def __init__(
         self,
@@ -52,11 +56,11 @@ class SiTGMMMoe1Interface(SiTInterface):
             raise ValueError(
                 f"GMM artifact num_modes={artifact.num_modes} does not match source.num_modes={self.num_modes}."
             )
-        self.gmm_log_pi = jnp.asarray(artifact.log_pi, dtype=jnp.float32)
-        self.gmm_mu = jnp.asarray(artifact.mu, dtype=jnp.float32)
-        self.gmm_var = jnp.asarray(artifact.var, dtype=jnp.float32)
-        self.gmm_latent_mean = jnp.asarray(artifact.latent_mean, dtype=jnp.float32)
-        self.gmm_latent_std = jnp.asarray(artifact.latent_std, dtype=jnp.float32)
+        self.gmm_log_pi = Buffer(jnp.asarray(artifact.log_pi, dtype=jnp.float32))
+        self.gmm_mu = Buffer(jnp.asarray(artifact.mu, dtype=jnp.float32))
+        self.gmm_var = Buffer(jnp.asarray(artifact.var, dtype=jnp.float32))
+        self.gmm_latent_mean = Buffer(jnp.asarray(artifact.latent_mean, dtype=jnp.float32))
+        self.gmm_latent_std = Buffer(jnp.asarray(artifact.latent_std, dtype=jnp.float32))
         self.gmm_standardize_eps = float(artifact.standardize_eps)
 
         self.source_rngs = nnx.Rngs(
