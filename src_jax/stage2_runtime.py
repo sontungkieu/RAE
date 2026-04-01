@@ -322,13 +322,235 @@ def _set_intermediate_feature_logging(model: Any, enabled: bool) -> None:
         network.return_intermediate_features = bool(enabled)
 
 
-def _build_sitdh_activation_names(num_encoder_blocks: int, num_decoder_blocks: int) -> list[tuple[str, int]]:
+def _sample_initial_latents(
+    model: Any,
+    *,
+    batch_size: int,
+    input_size: int,
+    in_channels: int,
+    rngs: Any,
+    jax: Any,
+    jnp: Any,
+) -> Any:
+    shape = (batch_size, input_size, input_size, in_channels)
+    if hasattr(model, "sample_source_prior"):
+        return model.sample_source_prior(shape)
+    return jax.random.normal(rngs(), shape, dtype=jnp.float32)
+
+
+def _patch_backend_visualize_for_source(trainer: Any) -> Any:
+    original_visualize = trainer.vis_utils.visualize
+
+    def patched_visualize(
+        config: Any,
+        net: Any,
+        ema_net: Any,
+        encoder: Any,
+        sampler: Any,
+        step: int,
+        g_net: Any | None = None,
+        guidance_scale: float | None = None,
+        mesh: Any | None = None,
+    ) -> None:
+        if not hasattr(net, "sample_source_prior") and not hasattr(ema_net, "sample_source_prior"):
+            return original_visualize(
+                config,
+                net,
+                ema_net,
+                encoder,
+                sampler,
+                step,
+                g_net=g_net,
+                guidance_scale=guidance_scale,
+                mesh=mesh,
+            )
+
+        image_size = config.data.image_size // config.encoder.get("downsample_factor", 1)
+        num_samples = config.visualize.num_samples // trainer.jax.process_count()
+        rngs = trainer.nnx.Rngs(config.eval.seed + trainer.jax.process_index())
+        labels = trainer.jax.random.randint(rngs(), (num_samples,), 0, config.network.num_classes)
+        labels = trainer.sharding_utils.make_fsarray_from_local_slice(labels, mesh.devices.flatten())
+
+        def sample_and_decode(model_to_use: Any, guide_model: Any, current_guidance_scale: float) -> Any:
+            latents = _sample_initial_latents(
+                model_to_use,
+                batch_size=num_samples,
+                input_size=image_size,
+                in_channels=config.network.in_channels,
+                rngs=rngs,
+                jax=trainer.jax,
+                jnp=trainer.jnp,
+            )
+            latents = trainer.sharding_utils.make_fsarray_from_local_slice(latents, mesh.devices.flatten())
+            samples = sampler.sample(
+                rngs,
+                model_to_use,
+                latents,
+                y=labels,
+                g_net=guide_model,
+                guidance_scale=current_guidance_scale,
+            )
+            return encoder.decode(samples)
+
+        trainer.logging.info("Generating model samples...")
+        net.eval()
+        model_images = sample_and_decode(net, g_net if g_net is not None else net, 1.0)
+        model_images = trainer.jax.experimental.multihost_utils.process_allgather(model_images, tiled=True)
+        trainer.vis_utils.wandb_utils.log_images(model_images, "network", step=step)
+        net.train()
+
+        trainer.logging.info("Generating EMA samples...")
+        ema_images = sample_and_decode(ema_net, g_net if g_net is not None else ema_net, 1.0)
+        ema_images = trainer.jax.experimental.multihost_utils.process_allgather(ema_images, tiled=True)
+        trainer.vis_utils.wandb_utils.log_images(ema_images, "ema_network", step=step)
+
+        effective_guidance = (
+            config.visualize.guidance_scale if guidance_scale is None else guidance_scale
+        )
+        if effective_guidance > 1.0:
+            trainer.logging.info("Generating EMA samples with guidance...")
+            guided_images = sample_and_decode(
+                ema_net,
+                g_net if g_net is not None else ema_net,
+                effective_guidance,
+            )
+            guided_images = trainer.jax.experimental.multihost_utils.process_allgather(
+                guided_images,
+                tiled=True,
+            )
+            trainer.vis_utils.wandb_utils.log_images(
+                guided_images,
+                f"ema_network_cfg={effective_guidance}",
+                step=step,
+            )
+
+    trainer.vis_utils.visualize = patched_visualize
+    return original_visualize
+
+
+def _patch_backend_fid_for_source(trainer: Any) -> Any:
+    original_calculate_cls_fake_stats = trainer.fid.calculate_cls_fake_stats
+
+    def patched_calculate_cls_fake_stats(
+        config: Any,
+        rngs: Any,
+        sampler: Any,
+        generator: Any,
+        encoder: Any,
+        detector: Any,
+        detector_params: Any,
+        guide_generator: Any | None = None,
+        guidance_scale: float = 1.0,
+        all_eval_sample_nums: list[int] = [50000],
+        save_samples_path: str | None = None,
+        mesh: Any | None = None,
+    ) -> dict[str, np.ndarray]:
+        if not hasattr(generator, "sample_source_prior"):
+            return original_calculate_cls_fake_stats(
+                config,
+                rngs,
+                sampler,
+                generator,
+                encoder,
+                detector,
+                detector_params,
+                guide_generator,
+                guidance_scale,
+                all_eval_sample_nums,
+                save_samples_path,
+                mesh,
+            )
+
+        batch_size = config.eval.batch_size * trainer.jax.local_device_count()
+        sample_size = config.data.image_size // config.encoder.get("downsample_factor", 1)
+        sample_channels = config.network.in_channels
+        if guide_generator is None:
+            guide_generator = generator
+
+        @trainer.nnx.jit
+        def sample_step(generator_model: Any, guide_model: Any, x: Any, c: Any, sample_rngs: Any) -> Any:
+            return sampler.sample(
+                sample_rngs,
+                generator_model,
+                x,
+                y=c,
+                g_net=guide_model,
+                guidance_scale=guidance_scale,
+            )
+
+        max_eval_samples = max(all_eval_sample_nums)
+        eval_iters = math.ceil(max_eval_samples / (batch_size * trainer.jax.process_count()))
+        repl_sharding = trainer.jax.sharding.NamedSharding(mesh, trainer.P())
+
+        def sync_state(state: Any) -> Any:
+            return state
+
+        p_sync_state = trainer.jax.jit(sync_state, out_shardings=repl_sharding)
+        generator_graph, generator_state = trainer.nnx.split(generator)
+        generator_state = p_sync_state(generator_state)
+        generator = trainer.nnx.merge(generator_graph, generator_state)
+
+        guide_graph, guide_state = trainer.nnx.split(guide_generator)
+        guide_state = p_sync_state(guide_state)
+        guide_generator = trainer.nnx.merge(guide_graph, guide_state)
+
+        total_num_samples = 0
+        per_process_samples: list[np.ndarray] = []
+        for _ in range(eval_iters):
+            latents = _sample_initial_latents(
+                generator,
+                batch_size=batch_size,
+                input_size=sample_size,
+                in_channels=sample_channels,
+                rngs=rngs,
+                jax=trainer.jax,
+                jnp=trainer.jnp,
+            )
+            labels = trainer.jax.random.randint(rngs(), (batch_size,), 0, config.network.num_classes)
+            latents = trainer.sharding_utils.make_fsarray_from_local_slice(latents, mesh.devices.flatten())
+            labels = trainer.sharding_utils.make_fsarray_from_local_slice(labels, mesh.devices.flatten())
+            samples = sample_step(generator, guide_generator, latents, labels, rngs)
+            per_process_samples.append(
+                trainer.sharding_utils.get_local_slice_from_fsarray(encoder.decode(samples))
+            )
+            total_num_samples += samples.shape[0]
+            trainer.logging.info(f"Generated {total_num_samples} samples")
+
+        per_process_samples_np = np.concatenate(per_process_samples, axis=0)
+        all_stats = {}
+        for num_eval_samples in all_eval_sample_nums:
+            all_stats[num_eval_samples] = trainer.fid.calculate_stats_for_iterable(
+                per_process_samples_np,
+                detector,
+                detector_params,
+                config.eval.inception_batch_size,
+                num_eval_samples,
+            )
+        return all_stats
+
+    trainer.fid.calculate_cls_fake_stats = patched_calculate_cls_fake_stats
+    return original_calculate_cls_fake_stats
+
+
+def _build_stage2_activation_names(network_cfg: Any) -> list[tuple[str, int]]:
+    num_encoder_blocks = int(network_cfg.get("num_encoder_blocks", 0))
+    num_decoder_blocks = int(network_cfg.get("num_decoder_blocks", 0))
     names: list[tuple[str, int]] = []
-    for idx in range(num_encoder_blocks):
-        names.append(("enc", idx))
-    for idx in range(num_decoder_blocks):
-        names.append(("dec", idx))
+    if num_encoder_blocks or num_decoder_blocks:
+        for idx in range(num_encoder_blocks):
+            names.append(("enc", idx))
+        for idx in range(num_decoder_blocks):
+            names.append(("dec", idx))
+        return names
+
+    depth = int(network_cfg.get("depth", 0))
+    for idx in range(depth):
+        names.append(("blk", idx))
     return names
+
+
+def _infer_stage2_metric_prefix(config: Any) -> str:
+    return "sitdh" if str(config.network_class) == "lightning_ddt" else "sit"
 
 
 def _patch_backend_train_loop_for_eval(trainer: Any) -> Any:
@@ -422,9 +644,8 @@ def _patch_backend_train_loop_for_eval(trainer: Any) -> Any:
         diagnostics_cfg = config.get("diagnostics", {})
         log_rae_latent_stats = bool(diagnostics_cfg.get("log_rae_latent_stats", False))
         log_activation_stats = bool(diagnostics_cfg.get("log_activation_stats", False))
-        num_encoder_blocks = int(config.network.get("num_encoder_blocks", 0))
-        num_decoder_blocks = int(config.network.get("num_decoder_blocks", 0))
-        activation_names = _build_sitdh_activation_names(num_encoder_blocks, num_decoder_blocks)
+        metric_prefix = _infer_stage2_metric_prefix(config)
+        activation_names = _build_stage2_activation_names(config.network)
         if not config.eval.get("loss_on") and not log_rae_latent_stats and not log_activation_stats:
             return original_train_and_evaluate(config, workdir)
 
@@ -585,19 +806,24 @@ def _patch_backend_train_loop_for_eval(trainer: Any) -> Any:
             def loss_fn(model):
                 if log_activation_stats:
                     if "features" in batch:
-                        loss_vec, net_out, intermediate_features = model(
+                        loss_vec, net_out, aux_payload = model(
                             latents,
                             batch["features"],
                             y=labels,
                             return_aux=True,
                         )
                     else:
-                        loss_vec, net_out, intermediate_features = model(
+                        loss_vec, net_out, aux_payload = model(
                             latents,
                             y=labels,
                             return_aux=True,
                         )
-                    loss_dict = {"loss": loss_vec}
+                    if isinstance(aux_payload, dict):
+                        intermediate_features = aux_payload.get("intermediate_features", ())
+                        loss_dict = aux_payload.get("loss_dict", {"loss": loss_vec})
+                    else:
+                        intermediate_features = aux_payload
+                        loss_dict = {"loss": loss_vec}
                 else:
                     if "features" in batch:
                         loss_dict = model(latents, batch["features"], y=labels)
@@ -611,15 +837,15 @@ def _patch_backend_train_loop_for_eval(trainer: Any) -> Any:
                     metric_dict["rae_latent_rms"] = diag_stat_rms(latents)
                     metric_dict["rae_latent_var"] = diag_stat_var(latents)
                 if log_activation_stats:
-                    metric_dict["sitdh_output_rms"] = diag_stat_rms(net_out)
-                    metric_dict["sitdh_output_var"] = diag_stat_var(net_out)
+                    metric_dict[f"{metric_prefix}_output_rms"] = diag_stat_rms(net_out)
+                    metric_dict[f"{metric_prefix}_output_var"] = diag_stat_var(net_out)
                     for (stage_name, block_idx), feature in zip(
                         activation_names,
                         intermediate_features,
                         strict=False,
                     ):
-                        metric_dict[f"sitdh_act_{stage_name}_{block_idx:02d}_rms"] = diag_stat_rms(feature)
-                        metric_dict[f"sitdh_act_{stage_name}_{block_idx:02d}_var"] = diag_stat_var(feature)
+                        metric_dict[f"{metric_prefix}_act_{stage_name}_{block_idx:02d}_rms"] = diag_stat_rms(feature)
+                        metric_dict[f"{metric_prefix}_act_{stage_name}_{block_idx:02d}_var"] = diag_stat_var(feature)
                 return loss_dict["loss"].mean(), (loss_dict, metric_dict)
 
             grad_fn = trainer.nnx.value_and_grad(loss_fn, has_aux=True)
@@ -1192,6 +1418,8 @@ def run_stage2_training(args: argparse.Namespace) -> Path:
 
     original_create_default_writer = _patch_backend_metric_writer_for_kaggle(trainer)
     original_train_and_evaluate = _patch_backend_train_loop_for_eval(trainer)
+    original_visualize = _patch_backend_visualize_for_source(trainer)
+    original_calculate_cls_fake_stats = _patch_backend_fid_for_source(trainer)
 
     try:
         trainer.train_and_evaluate(backend_cfg, str(workdir))
@@ -1199,6 +1427,8 @@ def run_stage2_training(args: argparse.Namespace) -> Path:
         if original_create_default_writer is not None:
             trainer.metric_writers.create_default_writer = original_create_default_writer
         trainer.train_and_evaluate = original_train_and_evaluate
+        trainer.vis_utils.visualize = original_visualize
+        trainer.fid.calculate_cls_fake_stats = original_calculate_cls_fake_stats
         init_utils.build_models = original_build_models
 
     if args.hf_repo_id:
@@ -1234,7 +1464,15 @@ def run_stage2_sampling(args: argparse.Namespace) -> Path:
     rngs = nnx.Rngs((args.seed or 0) + jax.process_index())
     input_size = int(backend_cfg.network.input_size)
     in_channels = int(backend_cfg.network.in_channels)
-    noise = jax.random.normal(rngs(), (len(labels), input_size, input_size, in_channels), dtype=jnp.float32)
+    noise = _sample_initial_latents(
+        model,
+        batch_size=len(labels),
+        input_size=input_size,
+        in_channels=in_channels,
+        rngs=rngs,
+        jax=jax,
+        jnp=jnp,
+    )
     label_arr = jnp.asarray(labels, dtype=jnp.int32)
 
     g_net = None
@@ -1304,7 +1542,15 @@ def run_stage2_sampling_ddp(args: argparse.Namespace) -> Path:
         batch_labels = local_labels[offset : offset + args.per_proc_batch_size]
         if len(batch_labels) == 0:
             continue
-        noise = jax.random.normal(rngs(), (len(batch_labels), input_size, input_size, in_channels), dtype=jnp.float32)
+        noise = _sample_initial_latents(
+            model,
+            batch_size=len(batch_labels),
+            input_size=input_size,
+            in_channels=in_channels,
+            rngs=rngs,
+            jax=jax,
+            jnp=jnp,
+        )
         label_arr = jnp.asarray(batch_labels, dtype=jnp.int32)
         latents = sampler.sample(
             rngs,

@@ -49,6 +49,141 @@ class JaxAdapterTests(unittest.TestCase):
         self.assertEqual(backend_cfg["dtype"], "bfloat16")
         self.assertEqual(backend_cfg["data"]["data_dir"], "/tmp/imagenet")
 
+    def test_build_backend_config_maps_sit_to_lightning_dit(self) -> None:
+        config_path = self._write_temp_config(
+            """
+stage_1:
+  target: stage1.StabilityVAE
+  params:
+    sample_size: 256
+    latent_channels: 4
+    downsample_factor: 8
+stage_2:
+  target: stage2.models.SiT.SiT
+  params:
+    input_size: 32
+    patch_size: 2
+    in_channels: 4
+    hidden_size: 768
+    depth: 12
+    num_heads: 12
+    mlp_ratio: 4.0
+    class_dropout_prob: 0.0
+    num_classes: 1
+transport:
+  params:
+    time_dist_type: uniform
+sampler:
+  params:
+    sampling_method: euler
+misc:
+  latent_size: [4, 32, 32]
+  num_classes: 1
+"""
+        )
+        repo_cfg, resolved_config_path = load_repo_config(config_path)
+        backend_cfg = build_backend_config_dict(
+            repo_cfg,
+            config_path=resolved_config_path,
+            mode="train",
+            data_path="/tmp/celebahq256",
+            precision="bf16",
+            seed=7,
+            num_train_samples=30_000,
+            enable_eval=False,
+        )
+
+        self.assertEqual(backend_cfg["encoder_class"], "StabilityVAE")
+        self.assertEqual(backend_cfg["network_class"], "lightning_dit")
+        self.assertEqual(backend_cfg["network"]["input_size"], 32)
+        self.assertEqual(backend_cfg["network"]["patch_size"], 2)
+        self.assertEqual(backend_cfg["network"]["in_channels"], 4)
+        self.assertEqual(backend_cfg["network"]["hidden_size"], 768)
+        self.assertEqual(backend_cfg["network"]["depth"], 12)
+        self.assertEqual(backend_cfg["network"]["num_heads"], 12)
+        self.assertEqual(backend_cfg["interface_class"], "sit")
+
+    def test_build_backend_config_maps_rae_source_block_to_moe1_interface(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            gmm_stats_path = Path(tmp_dir) / "source_stats.npz"
+            np.savez(
+                gmm_stats_path,
+                log_pi=np.zeros((4,), dtype=np.float32),
+                mu=np.zeros((4, 8), dtype=np.float32),
+                var=np.ones((4, 8), dtype=np.float32),
+                latent_mean=np.zeros((8,), dtype=np.float32),
+                latent_std=np.ones((8,), dtype=np.float32),
+                standardize_eps=np.float32(1e-6),
+                latent_shape=np.asarray([2, 2, 2], dtype=np.int32),
+                layout=np.asarray("NHWC"),
+                sample_posterior=np.asarray(True),
+                latent_semantics=np.asarray("rae_encoded_output"),
+                vae_scale_factor=np.float32(1.0),
+                count=np.int64(32),
+                num_modes=np.int32(4),
+                active_modes=np.int32(2),
+                train_nll=np.float32(1.23),
+                active_mode_fraction_threshold=np.float32(0.01),
+                final_counts=np.asarray([12, 10, 6, 4], dtype=np.float32),
+                n_iter=np.int32(7),
+            )
+            config_path = self._write_temp_config(
+                f"""
+stage_1:
+  target: stage1.RAE
+  params:
+    encoder_input_size: 256
+    decoder_patch_size: 16
+    normalization_stat_path: /tmp/stat.pt
+    pretrained_encoder_path: facebook/dinov2-base
+    pretrained_decoder_path: /tmp/decoder.ckpt
+stage_2:
+  target: stage2.models.SiT.SiTDH
+  params:
+    input_size: 16
+    patch_size: 1
+    in_channels: 768
+    hidden_size: [384, 2048]
+    depth: [12, 2]
+    num_heads: [6, 16]
+transport:
+  params:
+    time_dist_type: uniform
+sampler:
+  params:
+    sampling_method: euler
+misc:
+  latent_size: [768, 16, 16]
+  num_classes: 1
+source:
+  enabled: true
+  kind: gmm_moe1
+  gmm_stats_path: {gmm_stats_path.as_posix()}
+  num_modes: 4
+  condition_dim: 32
+"""
+            )
+            repo_cfg, resolved_config_path = load_repo_config(config_path)
+            backend_cfg = build_backend_config_dict(
+                repo_cfg,
+                config_path=resolved_config_path,
+                mode="train",
+                data_path="/tmp/celebahq256",
+                precision="bf16",
+                seed=7,
+                num_train_samples=30_000,
+                enable_eval=False,
+            )
+
+            self.assertEqual(backend_cfg["encoder_class"], "RAE")
+            self.assertEqual(backend_cfg["network_class"], "lightning_ddt")
+            self.assertEqual(backend_cfg["interface_class"], "sit_gmm_moe1")
+            self.assertIn("source", backend_cfg["interface"])
+            self.assertEqual(backend_cfg["interface"]["source"]["gmm_stats_path"], str(gmm_stats_path))
+            self.assertEqual(backend_cfg["interface"]["source"]["num_modes"], 4)
+            self.assertEqual(backend_cfg["interface"]["source"]["condition_dim"], 32)
+            self.assertEqual(backend_cfg["interface"]["source"]["hidden_channels"], 256)
+
     def test_npz_fid_reference_is_converted_to_pickle(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir:
             ref_path = Path(tmp_dir) / "ref_stats.npz"
@@ -122,6 +257,84 @@ class JaxAdapterTests(unittest.TestCase):
         self.assertEqual(backend_cfg["network"]["encoder_num_heads"], 6)
         self.assertEqual(backend_cfg["network"]["decoder_num_heads"], 16)
 
+    def test_stage1_stabilityvae_infers_latent_geometry_without_stage2(self) -> None:
+        config_path = self._write_temp_config(
+            """
+stage_1:
+  target: stage1.StabilityVAE
+  params:
+    sample_size: 256
+    latent_channels: 4
+    downsample_factor: 8
+    raw_mean: [0.865, -0.278, 0.216, 0.374]
+    raw_std: [4.86, 5.32, 3.94, 3.99]
+    final_mean: 0.0
+    final_std: 0.5
+transport:
+  params:
+    time_dist_type: uniform
+sampler:
+  params:
+    sampling_method: euler
+"""
+        )
+        repo_cfg, resolved_config_path = load_repo_config(config_path)
+        backend_cfg = build_backend_config_dict(
+            repo_cfg,
+            config_path=resolved_config_path,
+            mode="sample",
+            data_path="/tmp/celebahq256",
+            precision="bf16",
+            seed=7,
+            num_train_samples=30_000,
+            enable_eval=False,
+            require_stage2=False,
+        )
+
+        self.assertEqual(backend_cfg["encoder_class"], "StabilityVAE")
+        self.assertEqual(backend_cfg["data"]["image_size"], 256)
+        self.assertEqual(backend_cfg["encoder"]["latent_channels"], 4)
+        self.assertEqual(backend_cfg["encoder"]["downsample_factor"], 8)
+        self.assertEqual(backend_cfg["network"]["input_size"], 32)
+        self.assertEqual(backend_cfg["network"]["in_channels"], 4)
+        self.assertEqual(backend_cfg["sampler"]["sampling_time_kwargs"]["t_shift_cur"], 4096)
+        self.assertNotIn("stats_path", backend_cfg["encoder"])
+        self.assertNotIn("pretrained_path", backend_cfg["encoder"])
+        self.assertNotIn("pretrained_model_name_or_path", backend_cfg["encoder"])
+
+    def test_stage1_stabilityvae_forwards_optional_pretrained_path(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            weights_path = Path(tmp_dir) / "vae_trial1.pkl"
+            weights_path.write_bytes(b"stub")
+            config_path = Path(tmp_dir) / "config.yaml"
+            config_path.write_text(
+                f"""
+stage_1:
+  target: stage1.StabilityVAE
+  params:
+    sample_size: 256
+    latent_channels: 4
+    downsample_factor: 8
+    pretrained_path: {weights_path.name}
+""".strip()
+                + "\n",
+                encoding="utf-8",
+            )
+            repo_cfg, resolved_config_path = load_repo_config(str(config_path))
+            backend_cfg = build_backend_config_dict(
+                repo_cfg,
+                config_path=resolved_config_path,
+                mode="sample",
+                data_path="/tmp/celebahq256",
+                precision="bf16",
+                seed=7,
+                num_train_samples=30_000,
+                enable_eval=False,
+                require_stage2=False,
+            )
+
+            self.assertEqual(backend_cfg["encoder"]["pretrained_path"], str(weights_path.resolve()))
+
     def test_train_data_dir_normalizes_split_path_back_to_root(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir:
             root = Path(tmp_dir) / "celebahq256_imgfolder"
@@ -194,39 +407,33 @@ class JaxAdapterTests(unittest.TestCase):
         config_path = self._write_temp_config(
             """
 stage_1:
-  target: stage1.RAE
+  target: stage1.StabilityVAE
   params:
-    encoder_input_size: 256
-    decoder_patch_size: 16
-    normalization_stat_path: /tmp/stat.pt
-    pretrained_encoder_path: facebook/dinov2-base
-    pretrained_decoder_path: /tmp/decoder.ckpt
+    sample_size: 256
+    latent_channels: 4
+    downsample_factor: 8
 stage_2:
-  target: stage2.models.SiT.SiTDH
+  target: stage2.models.SiT.SiT
   params:
-    input_size: 16
-    patch_size: 1
-    in_channels: 768
-    hidden_size: [384, 2048]
-    depth: [12, 2]
-    num_heads: [6, 16]
+    input_size: 32
+    patch_size: 2
+    in_channels: 4
 misc:
-  latent_size: [768, 16, 16]
+  latent_size: [4, 32, 32]
 training:
   random_flip: true
 eval:
   data_path: /tmp/celebahq256/val
   eval_every: 5000
   random_flip: false
-""",
-            filename="CelebAHQ256_SiTDH-S_DINOv2-B.yaml",
+"""
         )
         repo_cfg, resolved_config_path = load_repo_config(config_path)
         backend_cfg = build_backend_config_dict(
             repo_cfg,
             config_path=resolved_config_path,
             mode="train",
-            data_path="/tmp/celebahq256_imgfolder",
+            data_path="/tmp/celebahq256",
             precision="bf16",
             seed=7,
             num_train_samples=30_000,
@@ -240,26 +447,21 @@ eval:
         config_path = self._write_temp_config(
             """
 stage_1:
-  target: stage1.RAE
+  target: stage1.StabilityVAE
   params:
-    encoder_input_size: 256
-    decoder_patch_size: 16
-    normalization_stat_path: /tmp/stat.pt
-    pretrained_encoder_path: facebook/dinov2-base
-    pretrained_decoder_path: /tmp/decoder.ckpt
+    sample_size: 256
+    latent_channels: 4
+    downsample_factor: 8
 stage_2:
-  target: stage2.models.SiT.SiTDH
+  target: stage2.models.SiT.SiT
   params:
-    input_size: 16
-    patch_size: 1
-    in_channels: 768
-    hidden_size: [384, 2048]
-    depth: [12, 2]
-    num_heads: [6, 16]
+    input_size: 32
+    patch_size: 2
+    in_channels: 4
 misc:
-  latent_size: [768, 16, 16]
+  latent_size: [4, 32, 32]
 """,
-            filename="CelebAHQ256_SiTDH-B_DINOv2-B.yaml",
+            filename="CelebAHQ256_SiT-B_StabilityVAE.yaml",
         )
         repo_cfg, resolved_config_path = load_repo_config(config_path)
         backend_cfg = build_backend_config_dict(

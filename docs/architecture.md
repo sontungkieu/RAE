@@ -11,11 +11,12 @@ Representation Autoencoders (RAE):
    sampled latents back into images through the Stage 1 decoder.
 
 The XLA branch focuses on TPU execution for Stage 2 training and sampling, with
-optional host-side FID scoring. The `jax-sit-dh` branch also adds a thin JAX/NNX
+optional host-side FID scoring. The current `jax-sit-dh-moe1-celebahq256` branch also adds a thin JAX/NNX
 compatibility layer under `src_jax/` that maps the repository's existing YAML
 schema into a pinned `diffuse_nnx` backend, including backend-native FID
-reference building, held-out validation loss, and a compatibility patch that
-keeps backend EMA initialization aligned with the live model weights.
+reference building, held-out validation loss, backend overlay patching, and a
+learned-source `moe1` path that replaces the pure Gaussian source distribution
+with an offline `GMM + CNN-MoE` source prior in RAE latent space.
 
 ## End-to-End Data Flow
 
@@ -32,6 +33,21 @@ image
 For Stage 2 training, the model does not learn directly in pixel space. The
 training loop first encodes images through the frozen RAE, then computes the
 transport loss in latent space.
+
+On this branch the latent transport path is:
+
+```text
+image -> RAE encoder -> x_data (B, 16, 16, 768)
+      -> GMM posterior q(k | x_data)
+      -> SourceMoE(z, one_hot(k)) -> x_src
+      -> SiTDH transport objective / sampler
+      -> Stage 1 decoder
+```
+
+The important shape constraint is that the learned source CNN stays in the same
+`NHWC` layout already used by the JAX runtime for RAE latents, so the MoE sees
+the full spatial latent map `16 x 16 x 768` rather than a VAE-style `32 x 32 x 4`
+tensor.
 
 ## Major Runtime Components
 
@@ -235,11 +251,14 @@ src/
   build_fid_stats.py
   evaluate_fid.py
 src_jax/
+  backend_overlay/
   vendor.py
+  moe1/
   config_adapter.py
   stage2_runtime.py
   stage1_runtime.py
   build_stage1_stats.py
+  build_source_gmm.py
   export_celebahq_hf.py
   export_celebahq_tfds.py
   reconstruct_folder.py
@@ -249,10 +268,10 @@ src_jax/
   sample_ddp.py
   stage1_sample.py
   push_hf.py
-raes-jax-celebahq-kaggle.ipynb
-raes-jax-celebahq-kaggle-tpuv5e8-sitdh-s.ipynb
-raes-jax-celebahq-kaggle-tpuv5e8-sitdh-b.ipynb
-raes-jax-celebahq-kaggle-tpuv5e8-sitdh-b-resume.ipynb
+raes-jax-celebahq-kaggle-moe1.ipynb
+raes-jax-celebahq-kaggle-tpuv5e8-sitdh-s-moe1.ipynb
+raes-jax-celebahq-kaggle-tpuv5e8-sitdh-b-moe1.ipynb
+raes-jax-celebahq-kaggle-tpuv5e8-sitdh-b-moe1-resume.ipynb
 ```
 
 ## Checkpoint Compatibility

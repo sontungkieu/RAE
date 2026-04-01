@@ -148,6 +148,59 @@ Lưu ý:
   \texttt{train\_sitdh\_act\_dec\_01\_var}.
 \end{itemize}
 
+\subsection{Block \texttt{source}}
+
+Trên branch \texttt{jax-sit-dh-moe1-celebahq256}, block \texttt{source} bật
+đường learned-source \texttt{GMM + CNN-MoE}. Khi
+\texttt{source.enabled=true}, adapter sẽ đổi \texttt{interface\_class} từ
+\texttt{sit} sang \texttt{sit\_gmm\_moe1}.
+
+\begin{lstlisting}[style=rae]
+source:
+  enabled: true
+  kind: gmm_moe1
+  gmm_stats_path: artifacts/celebahq256_source_gmm.npz
+  num_modes: 4
+  condition_dim: 64
+  hidden_channels: 256
+  router_temperature: 1.0
+  soft_moe: true
+  balance_loss_weight: 1.0e-2
+  entropy_loss_weight: 1.0e-3
+  var_kl_loss_weight: 1.0e-3
+  target_variance: 1.0
+  logvar_min: -8.0
+  logvar_max: 4.0
+  var_floor: 1.0e-5
+  posterior_eps: 1.0e-6
+  weight_prior: 1.0e-2
+  em_iters: 100
+  em_tol: 1.0e-4
+  em_restarts: 3
+  dead_count_threshold: 1.0
+  active_mode_fraction_threshold: 0.01
+\end{lstlisting}
+
+\begin{itemize}[leftmargin=1.5em]
+  \item \texttt{gmm\_stats\_path} trỏ tới artifact \texttt{.npz} được build bởi
+  \texttt{src\_jax/build\_source\_gmm.py};
+  \item \texttt{num\_modes} là số component GMM đồng thời là số expert của MoE;
+  \item \texttt{condition\_dim} là chiều embedding mode trước khi broadcast bias
+  vào trunk CNN;
+  \item \texttt{hidden\_channels} là độ rộng trunk/source experts; với latent
+  RAE CelebA-HQ có shape \texttt{B x 16 x 16 x 768}, notebook mặc định tăng lên
+  \texttt{256} thay vì giữ mức hẹp của flow VAE;
+  \item \texttt{router\_temperature} và \texttt{soft\_moe} điều khiển độ sắc
+  của router và việc dùng gating mềm hay straight-through;
+  \item \texttt{balance\_loss\_weight}, \texttt{entropy\_loss\_weight}, và
+  \texttt{var\_kl\_loss\_weight} là các regularizer phụ cộng vào objective
+  flow-matching chính;
+  \item \texttt{weight\_prior}, \texttt{em\_iters}, \texttt{em\_tol},
+  \texttt{em\_restarts}, \texttt{dead\_count\_threshold}, và
+  \texttt{active\_mode\_fraction\_threshold} phải khớp recipe đã dùng để build
+  artifact GMM.
+\end{itemize}
+
 \subsection{Block \texttt{eval}}
 
 Đường JAX giờ dùng block \texttt{eval} cho cả validation loss lẫn online FID.
