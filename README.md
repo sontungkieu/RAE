@@ -22,6 +22,7 @@ TorchXLA/TPU:
 JAX/NNX:
 * A lightweight JAX/NNX compatibility layer under `src_jax/`.
 * Stage 2 train/sample entrypoints that reuse the existing YAML schema.
+* Public CelebA-HQ workflows centered on backend-native `StabilityVAE + SiT-B`.
 * Weights & Biases logging, Hugging Face upload, and optional FID scoring without duplicating the full PyTorch codebase.
 
 ## Documentation
@@ -33,10 +34,9 @@ Use the docs folder as the detailed guide for this branch:
 - [docs/workflows.md](docs/workflows.md): practical runbooks for XLA and JAX/NNX training, sampling, and FID
 - [docs/config-reference.md](docs/config-reference.md): YAML schema reference
 - [pdf/main.pdf](pdf/main.pdf): detailed Vietnamese PDF for architecture, workflow, config, and operations
-- [raes-jax-celebahq-kaggle.ipynb](raes-jax-celebahq-kaggle.ipynb): Kaggle notebook for the standard CelebA-HQ JAX flow, downloading `eurecom-ds/celeba-hq-256` from Hugging Face into a local cache and exporting it into `/kaggle/working/celebahq256_imgfolder`, syncing repo dependencies into `/tmp/.venv` via `uv sync`, and running package-backed steps through `uv run`
-- [raes-jax-celebahq-kaggle-tpuv5e8-sitdh-s.ipynb](raes-jax-celebahq-kaggle-tpuv5e8-sitdh-s.ipynb): Kaggle notebook tuned for `TPU v5e-8` for the `SiTDH-S` CelebA-HQ variant, keeping the same Hugging-Face-export-to-ImageFolder flow, applying the automatic `jaxlib` executable-stack fix for Kaggle, keeping host-side CPU FID, and defaulting to a Stage 2 checkpoint cadence of `210000` steps
-- [raes-jax-celebahq-kaggle-tpuv5e8-sitdh-b.ipynb](raes-jax-celebahq-kaggle-tpuv5e8-sitdh-b.ipynb): sibling Kaggle `TPU v5e-8` notebook that keeps the same `/tmp/.venv` + `uv sync` flow and the same Hugging Face `celeba-hq-256` export step, but switches Stage 2 to the DH/two-tower `SiTDH-B` CelebA-HQ recipe (`hidden_size=[768, 2048]`, `depth=[12, 2]`, `num_heads=[12, 16]`, `use_pos_embed=true`) with `class_dropout_prob=0.0`, while keeping the default checkpoint cadence at `210000` steps
-- [raes-jax-celebahq-kaggle-tpuv5e8-sitdh-b-resume.ipynb](raes-jax-celebahq-kaggle-tpuv5e8-sitdh-b-resume.ipynb): minimal Kaggle `TPU v5e-8` resume-only notebook for the `SiTDH-B` variant, starting by unzipping the previous notebook `_output_.zip` back into `/kaggle/working`, then rebuilding only the `uv` environment and auto-detecting both the newest `CelebAHQ256_SiTDH-B_DINOv2-B_jax_tpuv5e8-*` Orbax run directory and its newest `checkpoint_*`
+- [vaes-jax-celebahq-kaggle.ipynb](vaes-jax-celebahq-kaggle.ipynb): Kaggle notebook for the backend-native `StabilityVAE + SiT-B` CelebA-HQ flow, keeping the same Hugging Face export-to-ImageFolder step but skipping the RAE decoder download and Stage 1 latent-stat bootstrap work entirely
+- [vaes-jax-celebahq-kaggle-tpuv5e8-sitb.ipynb](vaes-jax-celebahq-kaggle-tpuv5e8-sitb.ipynb): `TPU v5e-8` notebook for `StabilityVAE + SiT-B`, using `stage1.StabilityVAE`, `stage2.models.SiT.SiT`, `training.random_flip=true`, and the single-tower `SiT-B` CelebA-HQ recipe (`hidden_size=768`, `depth=12`, `num_heads=12`)
+- [vaes-jax-celebahq-kaggle-tpuv5e8-sitb-resume.ipynb](vaes-jax-celebahq-kaggle-tpuv5e8-sitb-resume.ipynb): resume-only `TPU v5e-8` notebook for the timestamped `CelebAHQ256_SiT-B_StabilityVAE_jax_tpuv5e8-*` Orbax runs
 
 ## Environment
 
@@ -75,7 +75,7 @@ Use the docs folder as the detailed guide for this branch:
 
 ### Download Pre-trained Models
 
-The upstream asset collection still contains the original RAE decoders, legacy DiT<sup>DH</sup> checkpoints, and latent-normalization stats. This branch switches the default Stage 2 configs to SiT<sup>DH</sup>, so sampling configs expect you to attach fresh SiTDH-compatible checkpoints before use. To download the shared assets:
+The upstream asset collection still contains the original RAE decoders, legacy DiT<sup>DH</sup> checkpoints, and latent-normalization stats. The default `StabilityVAE + SiT-B` CelebA-HQ workflow on this branch does not require an external RAE decoder download. If you still want to run a manual `RAE + SiTDH` experiment through YAML and the existing entrypoints, you can download the shared RAE assets with:
 
 
 ```bash
@@ -108,12 +108,12 @@ and the solver used during training or inference. A minimal example looks like:
 
 ```yaml
 stage_1:
-   target: stage1.RAE
+   target: stage1.RAE  # or stage1.StabilityVAE on the JAX VAE path
    params: { ... }
    ckpt: <path_to_ckpt>  
 
 stage_2:
-   target: stage2.models.SiT.SiTDH
+   target: stage2.models.SiT.SiTDH  # or stage2.models.SiT.SiT for single-tower SiT
    params: { ... }
    ckpt: <path_to_ckpt>  
 
@@ -142,11 +142,15 @@ eval:
    ...
 ```
 
-- `stage_1` instantiates the frozen encoder and trainable decoder. For Stage 1
-  training you can point to an existing checkpoint via `stage_1.ckpt` or start
-  from `pretrained_decoder_path`.
+- `stage_1` instantiates either the RAE encoder/decoder pair or the backend-native
+  `StabilityVAE` on the JAX path. For Stage 1 training you can point to an
+  existing RAE checkpoint via `stage_1.ckpt` or start from
+  `pretrained_decoder_path`; the `StabilityVAE` path does not use those RAE
+  decoder fields.
 - `stage_2` defines the diffusion transformer. During sampling you must provide
   `ckpt`; during training you typically omit it so weights initialise randomly.
+  `SiTDH` selects the DH/two-tower backbone, while `SiT` selects the single-tower
+  `LightningDiT`-style backbone used by the new CelebA-HQ VAE notebooks.
 - `transport`, `sampler`, and `guidance` select the forward/backward SDE/ODE
   integrator and optional classifier-free or autoguidance schedule.
 - `misc` collects shapes, class counts, and scaling constants used by both
@@ -171,8 +175,9 @@ There is also a training script for training a ViT-XL decoder on DINOv2-B: `conf
 
 #### Stage2
 
-This branch provides SiTDH config templates for both training and sampling at `configs/stage2/`.
-The checked-in sampling configs intentionally leave `stage_2.ckpt` and `guidance.guidance_model.ckpt` as `null` until you point them at SiTDH-compatible weights.
+This branch still provides checked-in SiTDH config templates for both training and sampling at `configs/stage2/`.
+The new CelebA-HQ `StabilityVAE + SiT-B` flow writes its JAX configs at notebook runtime as `CelebAHQ256_StabilityVAE_*.yaml` and `CelebAHQ256_SiT-B_StabilityVAE_*.yaml`.
+The checked-in SiTDH sampling configs intentionally leave `stage_2.ckpt` and `guidance.guidance_model.ckpt` as `null` until you point them at SiTDH-compatible weights.
 
 ## Stage 1: Representation Autoencoder
 
@@ -340,23 +345,27 @@ python3 src_jax/push_hf.py \
 Key behavior:
 
 - `src_jax/` accepts the same top-level YAML blocks: `stage_1`, `stage_2`, `transport`, `sampler`, `guidance`, `misc`, `training`, and `eval`.
-- `stage_2.ckpt` can point to a SiTDH-compatible PyTorch `.pt` checkpoint for inference, or to a JAX Orbax directory from a previous SiTDH run for resumed JAX runs.
+- `stage1.StabilityVAE` now maps to the backend-native `StabilityVAE` encoder, so the JAX VAE flow can reconstruct and sample without `pretrained_decoder_path` or `normalization_stat_path`.
+- `stage2.models.SiT.SiT` now maps to the backend single-tower `lightning_dit`, while `stage2.models.SiT.SiTDH` still maps to the DH/two-tower `lightning_ddt`.
+- `stage_2.ckpt` compatibility now follows the selected Stage 2 target: single-tower `SiT` checkpoints must match the `lightning_dit` shape, while `SiTDH` checkpoints must match the DH/two-tower `lightning_ddt` shape.
 - `--set key=value` applies OmegaConf CLI overrides without adding a second config format.
 - `src_jax/build_stage1_stats.py` writes a PyTorch-compatible `stat.pt` file, so the same Stage 1 normalization stats can be reused by both the original repo code and the JAX adapter.
 - the Stage 1-only JAX utilities (`src_jax/stage1_sample.py`, `src_jax/build_stage1_stats.py`, and `src_jax/reconstruct_folder.py`) can run with a YAML that only defines `stage_1`; they do not require `stage_2.target`.
 - `src_jax/export_celebahq_hf.py` is now the default CelebA-HQ exporter for Kaggle and local JAX flows: it downloads `eurecom-ds/celeba-hq-256` from Hugging Face into a cache directory and materializes the dataset into the `ImageFolder` layout still expected by the current JAX training pipeline, without requiring TFDS manual tar files.
 - `src_jax/export_celebahq_tfds.py` remains available as a fallback for the official TFDS `celeb_a_hq/256` path; it still requires the manual tar files under `--manual-dir`, and it forces the pure-Python protobuf runtime before importing TFDS so Kaggle does not trip over the common descriptor-compatibility crash.
 - for dataset-specific Stage 1 stats, start from a bootstrap identity stats file (`mean=0`, `var=1`) and override `stage_1.params.normalization_stat_path` during the stats pass.
+- `training.random_flip` and `eval.random_flip` now control the raw-image transform on the JAX Stage 2 path, so the new `StabilityVAE + SiT-B` CelebA-HQ recipe can enable horizontal flips without touching the backend checkout.
 - `ENTITY` / `PROJECT` / `WANDB_KEY` are bridged to the `WANDB_*` variables expected by the JAX backend.
 - `--hf-repo-id` on `src_jax/train.py` uploads the finished workdir directly to Hugging Face.
 - `src_jax/build_fid_stats.py` builds backend-native `fid_ref` files with the same Flax Inception detector used by JAX online FID.
-- `training.log_rae_latent_stats=true` makes the JAX train loop log RMS and variance of the Stage 1 RAE latents actually consumed by Stage 2, while `training.log_activation_stats=true` logs RMS and variance for the SiTDH output and each encoder/decoder activation block.
+- `training.log_rae_latent_stats=true` keeps the existing `train_rae_latent_*` metric names, but now covers whichever Stage 1 latent tensor the JAX path actually feeds into Stage 2, including `StabilityVAE`.
+- `training.log_activation_stats=true` logs RMS and variance for the selected Stage 2 backbone: `train_sitdh_*` for DH/two-tower runs and `train_sit_*` for single-tower `SiT` runs.
 - `training.prefetch_factor` and `eval.prefetch_factor` now forward directly into the host-side PyTorch `DataLoader` used by the JAX Stage 2 path, so you can deepen the per-worker prefetch queue without editing the cached backend checkout by hand.
-- `raes-jax-celebahq-kaggle.ipynb` mirrors the standard Kaggle workflow end to end for CelebA-HQ, but now points `UV_PROJECT_ENVIRONMENT` to `/tmp/.venv`, caches wheels under `/tmp/uv-cache`, runs `uv sync -q` against the repo `pyproject.toml`, downloads `eurecom-ds/celeba-hq-256` from Hugging Face into `/kaggle/working/hf_datasets_cache`, exports it into `/kaggle/working/celebahq256_imgfolder`, and keeps package-backed steps inside `uv run` instead of relying on the notebook kernel interpreter.
-- `raes-jax-celebahq-kaggle-tpuv5e8-sitdh-s.ipynb` copies that flow for `TPU v5e-8`, fixes the Stage 2 CelebA-HQ variant explicitly to `SiTDH-S`, disables label dropout for the single-class setup by setting `class_dropout_prob=0.0`, syncs the repo dependencies into `/tmp/.venv`, clears the `jaxlib` executable-stack flag that Kaggle can reject, verifies TPU visibility in a fresh Python process, builds the JAX `fid_ref` with the same backend detector used during online FID, and keeps the default Stage 2 checkpoint cadence at `210000` steps.
-- `raes-jax-celebahq-kaggle-tpuv5e8-sitdh-b.ipynb` is the `TPU v5e-8` sibling notebook for the DH/two-tower `SiTDH-B` Stage 2 recipe, reusing the same Kaggle/JAX flow while writing a `CelebAHQ256_SiTDH-B_DINOv2-B_jax_tpuv5e8.yaml` config, setting `hidden_size=[768, 2048]`, `depth=[12, 2]`, `num_heads=[12, 16]`, enabling `use_pos_embed`, disabling label dropout with `class_dropout_prob=0.0`, and keeping the same `210000`-step checkpoint cadence.
-- `raes-jax-celebahq-kaggle-tpuv5e8-sitdh-b-resume.ipynb` is now a stripped-down resume-only notebook: it first runs the old notebook archive extraction command `unzip -o /kaggle/input/notebooks/kieuhongquan/rae-jax/_output_.zip -d /kaggle/working`, then keeps only the minimal repo check, `uv sync`, Kaggle secret, path sanity check, and `src_jax/train.py --workdir ...` cells needed to locate the newest `CelebAHQ256_SiTDH-B_DINOv2-B_jax_tpuv5e8-*` run under `/kaggle/working/results_jax_tpu/` and restore `latest_step()` from that run's newest `checkpoint_<step>/` directory.
-- In the CelebA-HQ notebooks, the final Stage 2 train/resume cell now points `--data-path` at `/kaggle/working/celebahq256_imgfolder`, keeps `eval.data_path` on the exported `val` split, enables `training.log_rae_latent_stats=true` plus `training.log_activation_stats=true` by default, and also sets `training.prefetch_factor=8` with `eval.prefetch_factor=4` for the TPU variants so the host loader can queue batches more aggressively.
+- the branch no longer keeps dedicated `raes-jax-celebahq*.ipynb` notebooks; the public CelebA-HQ notebook flow is now the `StabilityVAE + SiT-B` set below.
+- `vaes-jax-celebahq-kaggle.ipynb` keeps the same Hugging Face export flow but switches Stage 1 to `stage1.StabilityVAE` and Stage 2 to single-tower `stage2.models.SiT.SiT`, so there is no RAE decoder download, no bootstrap identity stats file, and no required latent-stat preprocessing pass before training.
+- `vaes-jax-celebahq-kaggle-tpuv5e8-sitb.ipynb` is the `TPU v5e-8` sibling for that VAE flow, writing `CelebAHQ256_SiT-B_StabilityVAE_jax_tpuv5e8.yaml`, enabling `training.random_flip=true`, and keeping the DiT-B-style `SiT-B` shape (`hidden_size=768`, `depth=12`, `num_heads=12`, `patch_size=2`) referenced from the `shortcut-models` CelebA example while still training with this repo's flow-matching `sit` objective.
+- `vaes-jax-celebahq-kaggle-tpuv5e8-sitb-resume.ipynb` mirrors the resume-only Kaggle TPU pattern for the latest `CelebAHQ256_SiT-B_StabilityVAE_jax_tpuv5e8-*` Orbax workdir.
+- The VAE CelebA-HQ notebooks point `--data-path` at `/kaggle/working/celebahq256_imgfolder`, keep `eval.data_path` on the exported `val` split, and use the same `training.prefetch_factor=8` plus `eval.prefetch_factor=4` pattern on the TPU variants so the host loader can queue batches more aggressively.
 
 Current limitation:
 

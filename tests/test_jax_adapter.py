@@ -18,6 +18,13 @@ except ModuleNotFoundError as exc:
 
 @unittest.skipIf(_IMPORT_ERROR is not None, f"Missing optional dependency: {_IMPORT_ERROR}")
 class JaxAdapterTests(unittest.TestCase):
+    def _write_temp_config(self, text: str) -> str:
+        temp_dir = tempfile.TemporaryDirectory()
+        self.addCleanup(temp_dir.cleanup)
+        config_path = Path(temp_dir.name) / "config.yaml"
+        config_path.write_text(text, encoding="utf-8")
+        return str(config_path)
+
     def test_build_backend_config_maps_sitdh_to_lightning_ddt(self) -> None:
         repo_cfg, config_path = load_repo_config("configs/stage2/training/ImageNet256/SiTDH-XL_DINOv2-B.yaml")
         backend_cfg = build_backend_config_dict(
@@ -41,6 +48,60 @@ class JaxAdapterTests(unittest.TestCase):
         self.assertEqual(backend_cfg["interface_class"], "sit")
         self.assertEqual(backend_cfg["dtype"], "bfloat16")
         self.assertEqual(backend_cfg["data"]["data_dir"], "/tmp/imagenet")
+
+    def test_build_backend_config_maps_sit_to_lightning_dit(self) -> None:
+        config_path = self._write_temp_config(
+            """
+stage_1:
+  target: stage1.StabilityVAE
+  params:
+    sample_size: 256
+    latent_channels: 4
+    downsample_factor: 8
+stage_2:
+  target: stage2.models.SiT.SiT
+  params:
+    input_size: 32
+    patch_size: 2
+    in_channels: 4
+    hidden_size: 768
+    depth: 12
+    num_heads: 12
+    mlp_ratio: 4.0
+    class_dropout_prob: 0.0
+    num_classes: 1
+transport:
+  params:
+    time_dist_type: uniform
+sampler:
+  params:
+    sampling_method: euler
+misc:
+  latent_size: [4, 32, 32]
+  num_classes: 1
+"""
+        )
+        repo_cfg, resolved_config_path = load_repo_config(config_path)
+        backend_cfg = build_backend_config_dict(
+            repo_cfg,
+            config_path=resolved_config_path,
+            mode="train",
+            data_path="/tmp/celebahq256",
+            precision="bf16",
+            seed=7,
+            num_train_samples=30_000,
+            enable_eval=False,
+        )
+
+        self.assertEqual(backend_cfg["encoder_class"], "StabilityVAE")
+        self.assertEqual(backend_cfg["network_class"], "lightning_dit")
+        self.assertEqual(backend_cfg["network"]["input_size"], 32)
+        self.assertEqual(backend_cfg["network"]["patch_size"], 2)
+        self.assertEqual(backend_cfg["network"]["in_channels"], 4)
+        self.assertEqual(backend_cfg["network"]["hidden_size"], 768)
+        self.assertEqual(backend_cfg["network"]["depth"], 12)
+        self.assertEqual(backend_cfg["network"]["num_heads"], 12)
+        self.assertEqual(backend_cfg["interface_class"], "sit")
 
     def test_npz_fid_reference_is_converted_to_pickle(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir:
@@ -115,6 +176,51 @@ class JaxAdapterTests(unittest.TestCase):
         self.assertEqual(backend_cfg["network"]["encoder_num_heads"], 6)
         self.assertEqual(backend_cfg["network"]["decoder_num_heads"], 16)
 
+    def test_stage1_stabilityvae_infers_latent_geometry_without_stage2(self) -> None:
+        config_path = self._write_temp_config(
+            """
+stage_1:
+  target: stage1.StabilityVAE
+  params:
+    sample_size: 256
+    latent_channels: 4
+    downsample_factor: 8
+    raw_mean: [0.865, -0.278, 0.216, 0.374]
+    raw_std: [4.86, 5.32, 3.94, 3.99]
+    final_mean: 0.0
+    final_std: 0.5
+transport:
+  params:
+    time_dist_type: uniform
+sampler:
+  params:
+    sampling_method: euler
+"""
+        )
+        repo_cfg, resolved_config_path = load_repo_config(config_path)
+        backend_cfg = build_backend_config_dict(
+            repo_cfg,
+            config_path=resolved_config_path,
+            mode="sample",
+            data_path="/tmp/celebahq256",
+            precision="bf16",
+            seed=7,
+            num_train_samples=30_000,
+            enable_eval=False,
+            require_stage2=False,
+        )
+
+        self.assertEqual(backend_cfg["encoder_class"], "StabilityVAE")
+        self.assertEqual(backend_cfg["data"]["image_size"], 256)
+        self.assertEqual(backend_cfg["encoder"]["latent_channels"], 4)
+        self.assertEqual(backend_cfg["encoder"]["downsample_factor"], 8)
+        self.assertEqual(backend_cfg["network"]["input_size"], 32)
+        self.assertEqual(backend_cfg["network"]["in_channels"], 4)
+        self.assertEqual(backend_cfg["sampler"]["sampling_time_kwargs"]["t_shift_cur"], 4096)
+        self.assertNotIn("stats_path", backend_cfg["encoder"])
+        self.assertNotIn("pretrained_path", backend_cfg["encoder"])
+        self.assertNotIn("pretrained_model_name_or_path", backend_cfg["encoder"])
+
     def test_train_data_dir_normalizes_split_path_back_to_root(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir:
             root = Path(tmp_dir) / "celebahq256_imgfolder"
@@ -182,6 +288,46 @@ class JaxAdapterTests(unittest.TestCase):
 
         self.assertEqual(backend_cfg["data"]["prefetch_factor"], 8)
         self.assertEqual(backend_cfg["eval"]["prefetch_factor"], 3)
+
+    def test_random_flip_flags_are_forwarded(self) -> None:
+        config_path = self._write_temp_config(
+            """
+stage_1:
+  target: stage1.StabilityVAE
+  params:
+    sample_size: 256
+    latent_channels: 4
+    downsample_factor: 8
+stage_2:
+  target: stage2.models.SiT.SiT
+  params:
+    input_size: 32
+    patch_size: 2
+    in_channels: 4
+misc:
+  latent_size: [4, 32, 32]
+training:
+  random_flip: true
+eval:
+  data_path: /tmp/celebahq256/val
+  eval_every: 5000
+  random_flip: false
+"""
+        )
+        repo_cfg, resolved_config_path = load_repo_config(config_path)
+        backend_cfg = build_backend_config_dict(
+            repo_cfg,
+            config_path=resolved_config_path,
+            mode="train",
+            data_path="/tmp/celebahq256",
+            precision="bf16",
+            seed=7,
+            num_train_samples=30_000,
+            enable_eval=True,
+        )
+
+        self.assertTrue(backend_cfg["data"]["random_flip"])
+        self.assertFalse(backend_cfg["eval"]["random_flip"])
 
 
 if __name__ == "__main__":

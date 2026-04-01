@@ -13,6 +13,8 @@ from omegaconf import DictConfig, OmegaConf
 
 IMAGENET1K_TRAIN_SAMPLES = 1_281_167
 FID_CACHE_DIR = Path.home() / ".cache" / "rae_jax" / "fid_refs"
+STABILITY_VAE_RAW_MEAN = [0.865, -0.278, 0.216, 0.374]
+STABILITY_VAE_RAW_STD = [4.86, 5.32, 3.94, 3.99]
 
 
 def load_repo_config(config_path: str, overrides: list[str] | None = None) -> tuple[DictConfig, Path]:
@@ -79,25 +81,105 @@ def parse_guidance_value(cfg: dict[str, Any], key: str, default: float) -> float
 
 def infer_network_class(stage2_target: str) -> str:
     target = stage2_target.lower()
-    if "sitdh" in target or ".sit." in target:
+    leaf = target.rsplit(".", 1)[-1]
+    if leaf == "sitdh" or "ditwddthead" in leaf or "lightningddt" in leaf:
         return "lightning_ddt"
     if "ddt" in target:
         return "lightning_ddt"
-    if "lightningdit" in target or "lightning_dit" in target:
+    if leaf == "sit" or leaf == "lightningdit" or "lightning_dit" in target:
         return "lightning_dit"
-    if "dit" in target:
+    if leaf == "dit":
         return "dit"
     raise ValueError(f"Unsupported Stage-2 target for JAX adapter: {stage2_target}")
+
+
+def infer_encoder_class(stage1_target: str) -> str:
+    target = stage1_target.lower()
+    leaf = target.rsplit(".", 1)[-1]
+    if leaf in {"stabilityvae", "stability_vae"} or "stabilityvae" in target:
+        return "StabilityVAE"
+    if leaf == "rae" or ".rae" in target:
+        return "RAE"
+    raise ValueError(f"Unsupported Stage-1 target for JAX adapter: {stage1_target}")
 
 
 def _derive_image_size(stage1_params: dict[str, Any], misc_cfg: dict[str, Any], fallback: int | None) -> int:
     if fallback is not None:
         return int(fallback)
+    sample_size = stage1_params.get("sample_size")
+    if sample_size is not None:
+        return int(sample_size)
     latent_size = misc_cfg.get("latent_size")
     decoder_patch = int(stage1_params.get("decoder_patch_size", 16))
     if latent_size and len(latent_size) >= 3:
         return int(latent_size[1]) * decoder_patch
     return int(stage1_params.get("encoder_input_size", 256))
+
+
+def _derive_latent_size(
+    *,
+    encoder_class: str,
+    stage1_params: dict[str, Any],
+    stage2_params: dict[str, Any],
+    misc_cfg: dict[str, Any],
+    resolved_image_size: int,
+) -> list[int]:
+    latent_size = misc_cfg.get("latent_size")
+    if latent_size and len(latent_size) >= 3:
+        return [int(latent_size[0]), int(latent_size[1]), int(latent_size[2])]
+
+    if "in_channels" in stage2_params or "input_size" in stage2_params:
+        return [
+            int(stage2_params.get("in_channels", 768)),
+            int(stage2_params.get("input_size", 16)),
+            int(stage2_params.get("input_size", 16)),
+        ]
+
+    if encoder_class == "StabilityVAE":
+        downsample_factor = int(stage1_params.get("downsample_factor", 8))
+        latent_channels = int(stage1_params.get("latent_channels", 4))
+        spatial_size = max(1, int(resolved_image_size) // max(1, downsample_factor))
+        return [latent_channels, spatial_size, spatial_size]
+
+    return [768, 16, 16]
+
+
+def _build_encoder_config(
+    *,
+    encoder_class: str,
+    stage1_params: dict[str, Any],
+    resolved_image_size: int,
+    latent_size: list[int],
+    stage1_encoder_model: str | None,
+    decoder_ckpt: str | None,
+    stats_path: str | None,
+) -> dict[str, Any]:
+    if encoder_class == "StabilityVAE":
+        return {
+            "sample_size": int(stage1_params.get("sample_size", resolved_image_size)),
+            "latent_channels": int(stage1_params.get("latent_channels", latent_size[0])),
+            "downsample_factor": int(
+                stage1_params.get(
+                    "downsample_factor",
+                    max(1, int(resolved_image_size) // max(1, int(latent_size[1]))),
+                )
+            ),
+            "raw_mean": list(stage1_params.get("raw_mean", STABILITY_VAE_RAW_MEAN)),
+            "raw_std": list(stage1_params.get("raw_std", STABILITY_VAE_RAW_STD)),
+            "final_mean": float(stage1_params.get("final_mean", 0.0)),
+            "final_std": float(stage1_params.get("final_std", 0.5)),
+            "encoded_pixels": False,
+        }
+
+    return {
+        "pretrained_path": decoder_ckpt,
+        "stats_path": stats_path,
+        "resolution": int(stage1_params.get("encoder_input_size", 224)),
+        "downsample_factor": max(1, int(resolved_image_size) // max(1, int(latent_size[1]))),
+        "latent_channels": int(latent_size[0]),
+        "encoded_pixels": False,
+        "pretrained_model_name_or_path": stage1_encoder_model,
+    }
 
 
 def _convert_schedule_type(schedule_type: str | None) -> str:
@@ -174,6 +256,8 @@ def build_backend_config_dict(
     stage2_params = dict(stage2_cfg.get("params", {}))
     transport_params = dict(transport_cfg.get("params", {}))
     sampler_params = dict(sampler_cfg.get("params", {}))
+    stage1_target = str(stage1_cfg.get("target", "stage1.RAE")).strip() or "stage1.RAE"
+    encoder_class = infer_encoder_class(stage1_target)
 
     stage2_target = str(stage2_cfg.get("target", "")).strip()
     if stage2_target:
@@ -183,7 +267,13 @@ def build_backend_config_dict(
     else:
         network_class = "stage1_only"
     resolved_image_size = _derive_image_size(stage1_params, misc_cfg, image_size)
-    latent_size = misc_cfg.get("latent_size", [stage2_params.get("in_channels", 768), stage2_params.get("input_size", 16), stage2_params.get("input_size", 16)])
+    latent_size = _derive_latent_size(
+        encoder_class=encoder_class,
+        stage1_params=stage1_params,
+        stage2_params=stage2_params,
+        misc_cfg=misc_cfg,
+        resolved_image_size=resolved_image_size,
+    )
     guidance_scale = float(guidance_cfg.get("scale", 1.0))
     cfg_seed = seed if seed is not None else int(training_cfg.get("global_seed", 0))
 
@@ -193,6 +283,15 @@ def build_backend_config_dict(
     )
     decoder_ckpt = resolve_repo_value(stage1_params.get("pretrained_decoder_path"), config_path=config_path)
     stats_path = resolve_repo_value(stage1_params.get("normalization_stat_path"), config_path=config_path)
+    encoder_cfg = _build_encoder_config(
+        encoder_class=encoder_class,
+        stage1_params=stage1_params,
+        resolved_image_size=resolved_image_size,
+        latent_size=latent_size,
+        stage1_encoder_model=stage1_encoder_model,
+        decoder_ckpt=decoder_ckpt,
+        stats_path=stats_path,
+    )
 
     batch_size = int(training_cfg.get("global_batch_size", 1024))
     epochs = int(training_cfg.get("epochs", 1))
@@ -233,19 +332,12 @@ def build_backend_config_dict(
             "num_train_samples": num_train_samples,
             "num_workers": int(training_cfg.get("num_workers", 4)),
             "prefetch_factor": int(training_cfg.get("prefetch_factor", 2)),
+            "random_flip": bool(training_cfg.get("random_flip", False)),
             "seed": cfg_seed,
             "seed_pt": cfg_seed,
         },
-        "encoder_class": "RAE",
-        "encoder": {
-            "pretrained_path": decoder_ckpt,
-            "stats_path": stats_path,
-            "resolution": int(stage1_params.get("encoder_input_size", 224)),
-            "downsample_factor": max(1, int(resolved_image_size) // max(1, int(latent_size[1]))),
-            "latent_channels": int(latent_size[0]),
-            "encoded_pixels": False,
-            "pretrained_model_name_or_path": stage1_encoder_model,
-        },
+        "encoder_class": encoder_class,
+        "encoder": encoder_cfg,
         "network_class": network_class,
         "network": {
             "input_size": int(stage2_params.get("input_size", latent_size[1])),
@@ -330,6 +422,7 @@ def build_backend_config_dict(
             "loss_batch_size": int(eval_cfg.get("batch_size", 4)),
             "num_workers": int(eval_cfg.get("num_workers", training_cfg.get("num_workers", 4))),
             "prefetch_factor": int(eval_cfg.get("prefetch_factor", training_cfg.get("prefetch_factor", 2))),
+            "random_flip": bool(eval_cfg.get("random_flip", False)),
             "fid_on": fid_on,
             "fid_eval_model": bool(eval_cfg.get("fid_eval_model", False)),
             "inception_batch_size": int(eval_cfg.get("fid_batch_size", 64)),

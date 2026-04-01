@@ -32,13 +32,12 @@ src_jax/
   sample_ddp.py
   stage1_sample.py
   push_hf.py
-raes-jax-celebahq-kaggle.ipynb
-raes-jax-celebahq-kaggle-tpuv5e8-sitdh-s.ipynb
-raes-jax-celebahq-kaggle-tpuv5e8-sitdh-b.ipynb
-raes-jax-celebahq-kaggle-tpuv5e8-sitdh-b-resume.ipynb
+vaes-jax-celebahq-kaggle.ipynb
+vaes-jax-celebahq-kaggle-tpuv5e8-sitb.ipynb
+vaes-jax-celebahq-kaggle-tpuv5e8-sitb-resume.ipynb
 \end{lstlisting}
 
-\subsection{Stage 1: Representation Autoencoder}
+\subsection{Stage 1: Representation Autoencoder và StabilityVAE}
 
 Thành phần gốc của Stage 1 nằm trong \texttt{src/stage1/rae.py}. Lớp
 \texttt{RAE} kết hợp:
@@ -56,21 +55,37 @@ Hành vi chính:
   \item \texttt{encode(x)} resize đầu vào về đúng độ phân giải của encoder,
   chuẩn hóa theo image processor, chạy encoder, reshape latent về dạng 2D nếu
   cần, rồi áp normalization;
-  \item \texttt{decode(z)} đảo normalization, đổi latent về dạng sequence nếu
+ \item \texttt{decode(z)} đảo normalization, đổi latent về dạng sequence nếu
   cần, rồi giải mã thành ảnh RGB bằng decoder ViT.
 \end{itemize}
 
-Ở đường JAX, \texttt{src\_jax/stage1\_runtime.py} không tự viết lại toàn bộ RAE
-trong repo này. Nó gọi backend NNX, nhưng vẫn dùng đúng các giá trị cấu hình
-trong block \texttt{stage\_1}.
+Ở nhánh này, \texttt{src/stage1/stability\_vae.py} còn cung cấp target
+\texttt{stage1.StabilityVAE} như một alias repo-facing cho encoder
+\texttt{StabilityVAE} native của backend NNX. Đường này:
+
+\begin{itemize}[leftmargin=1.5em]
+  \item không cần \texttt{pretrained\_decoder\_path} của RAE;
+  \item không bắt buộc phải bootstrap latent stat trước khi chạy CelebA-HQ;
+  \item mặc định suy ra latent shape \texttt{[4, 32, 32]} ở độ phân giải
+  \texttt{256x256}.
+\end{itemize}
 
 \subsection{Stage 2: SiT trong không gian latent}
 
-Surface Stage 2 mặc định của branch này nằm ở \texttt{src/stage2/models/SiT.py}.
-Lớp \texttt{SiTDH} là alias repo-facing cho backbone DH/two-tower
-\texttt{DiTwDDTHead} trong \texttt{src/stage2/models/DDT.py}. Điều này giữ cho
-kiến trúc Stage 2 khớp với biến thể DH, còn objective trên đường JAX vẫn đi qua
-interface \texttt{sit}.
+Surface Stage 2 dùng chung của branch này nằm ở \texttt{src/stage2/models/SiT.py}.
+File này giờ có hai alias repo-facing:
+
+\begin{itemize}[leftmargin=1.5em]
+  \item \texttt{SiTDH}: backbone DH/two-tower dựa trên
+  \texttt{DiTwDDTHead};
+  \item \texttt{SiT}: backbone single-tower dựa trên
+  \texttt{LightningDiT}.
+\end{itemize}
+
+Nhờ đó nhánh hiện tại vẫn giữ được đường \texttt{SiTDH} ở mức code/config khi
+cần, đồng thời public notebook flow của CelebA-HQ tập trung vào
+\texttt{StabilityVAE + SiT-B}. Objective trên đường JAX vẫn đi qua interface
+\texttt{sit} cho cả hai dạng backbone.
 
 Các đặc điểm quan trọng:
 
@@ -87,6 +102,7 @@ NNX:
 
 \begin{itemize}[leftmargin=1.5em]
   \item \texttt{SiTDH} $\rightarrow$ \texttt{lightning\_ddt},
+  \item \texttt{SiT} $\rightarrow$ \texttt{lightning\_dit},
   \item \texttt{LightningDiT} $\rightarrow$ \texttt{lightning\_dit},
   \item các target DDT legacy $\rightarrow$ \texttt{lightning\_ddt},
   \item các target kiểu DiT khác $\rightarrow$ \texttt{dit}.
@@ -119,9 +135,9 @@ File & Vai trò \\
 \midrule
 \endhead
 \texttt{src\_jax/vendor.py} & Bootstrap \texttt{diffuse\_nnx} vào \texttt{\~{}/.cache/rae\_jax/diffuse\_nnx} và pin commit \\
-\texttt{src\_jax/config\_adapter.py} & Chuyển YAML OmegaConf của repo sang config backend NNX \\
+\texttt{src\_jax/config\_adapter.py} & Chuyển YAML OmegaConf của repo sang config backend NNX, map \texttt{SiT}/\texttt{SiTDH}/\texttt{StabilityVAE} sang backend phù hợp, và forward \texttt{random\_flip} / prefetch knobs \\
 \texttt{src\_jax/stage2\_runtime.py} & Train, sampling, load checkpoint PyTorch hoặc Orbax, JAX validation-loss integration, FID glue, wandb bridge \\
- \texttt{src\_jax/stage1\_runtime.py} & Load encoder Stage 1 JAX, reconstruction một ảnh, reconstruction cả thư mục và tích lũy latent stat \\
+ \texttt{src\_jax/stage1\_runtime.py} & Load encoder Stage 1 JAX, reconstruction một ảnh, reconstruction cả thư mục và tích lũy latent stat cho cả \texttt{RAE} lẫn \texttt{StabilityVAE} \\
  \texttt{src\_jax/build\_stage1\_stats.py} & Tạo file \texttt{stat.pt} theo định dạng mean / var để dùng lại cho Stage 1 \\
  \texttt{src\_jax/export\_celebahq\_hf.py} & Download \texttt{eurecom-ds/celeba-hq-256} từ Hugging Face rồi export thành cây \texttt{ImageFolder} cho pipeline JAX hiện tại \\
  \texttt{src\_jax/export\_celebahq\_tfds.py} & Export TFDS \texttt{celeb\_a\_hq/256} thành cây \texttt{ImageFolder} cho pipeline JAX hiện tại và ép protobuf runtime kiểu Python để tránh lỗi import TFDS trên Kaggle \\
@@ -164,15 +180,16 @@ không còn bắt đầu từ một EMA cold-start sai ngay từ step đầu.
 
 \subsection{Checkpoint và tương thích trọng số}
 
-Với branch \texttt{jax-sit-dh}, checkpoint Stage 2 phải khớp shape của
-\texttt{SiTDH}/\texttt{LightningDiT}:
+Với branch \texttt{jax-vae-sit-celebahq256}, checkpoint Stage 2 phải khớp shape
+của backbone đã chọn:
 
 \begin{itemize}[leftmargin=1.5em]
   \item nếu \texttt{stage\_2.ckpt} là file PyTorch \texttt{.pt}, adapter sẽ
   port state dict sang NNX để inference hoặc khởi tạo train nếu checkpoint đó
-  đã tương thích với \texttt{SiTDH};
+  đã tương thích với \texttt{SiT} hoặc \texttt{SiTDH};
   \item nếu \texttt{stage\_2.ckpt} là thư mục checkpoint Orbax, adapter sẽ
-  restore trực tiếp run JAX \texttt{SiTDH} trước đó;
+  restore trực tiếp run JAX trước đó với cùng shape backend;
   \item checkpoint DDT legacy không được tự động convert trên branch này;
-  \item decoder Stage 1 ở đường JAX vẫn dùng được checkpoint decoder PyTorch.
+  \item decoder Stage 1 ở đường JAX vẫn dùng được checkpoint decoder PyTorch
+  trên flow RAE; flow \texttt{StabilityVAE} dùng trọng số VAE native của backend.
 \end{itemize}

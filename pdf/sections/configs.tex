@@ -37,7 +37,7 @@ Block & \texttt{src\_jax/train.py} & \texttt{src\_jax/sample.py} & \texttt{src\_
 
 \subsection{Block \texttt{stage\_1}}
 
-Adapter JAX không tạo schema mới cho Stage 1. Nó đọc trực tiếp:
+Adapter JAX không tạo schema mới cho Stage 1. Với flow RAE, nó đọc trực tiếp:
 
 \begin{itemize}[leftmargin=1.5em]
   \item \texttt{encoder\_config\_path} hoặc \texttt{encoder\_params.dinov2\_path},
@@ -48,6 +48,27 @@ Adapter JAX không tạo schema mới cho Stage 1. Nó đọc trực tiếp:
 
 Các giá trị này được chuyển sang encoder RAE của backend NNX để phục vụ
 reconstruction và decode latent khi sampling Stage 2.
+
+Nhánh hiện tại còn có path \texttt{stage1.StabilityVAE}. Với path này, notebook
+JAX CelebA-HQ chỉ cần các trường:
+
+\begin{lstlisting}[style=rae]
+stage_1:
+  target: stage1.StabilityVAE
+  params:
+    sample_size: 256
+    latent_channels: 4
+    downsample_factor: 8
+    raw_mean: [0.865, -0.278, 0.216, 0.374]
+    raw_std: [4.86, 5.32, 3.94, 3.99]
+    final_mean: 0.0
+    final_std: 0.5
+\end{lstlisting}
+
+Path này không cần \texttt{pretrained\_decoder\_path} hay
+\texttt{normalization\_stat\_path}; adapter sẽ map nó sang encoder
+\texttt{StabilityVAE} native của backend và có thể tự suy ra latent shape
+\texttt{[4, 32, 32]} khi config chưa có \texttt{stage\_2}.
 
 Nếu cần tính stat riêng cho dataset mới, có thể dùng:
 
@@ -73,7 +94,8 @@ Một số key quan trọng:
   nhưng trên branch này nó phải tương thích với shape của \texttt{SiTDH};
   \item \texttt{input\_size}, \texttt{patch\_size}, \texttt{in\_channels};
   \item \texttt{hidden\_size}, \texttt{depth}, \texttt{num\_heads}: với
-  \texttt{SiTDH} đây là các cặp encoder/decoder của backbone DH;
+  \texttt{SiTDH} đây là các cặp encoder/decoder của backbone DH, còn với
+  \texttt{SiT} đây là các scalar của backbone single-tower;
   \item \texttt{class\_dropout\_prob}: tỉ lệ label dropout cho CFG; với
   notebook CelebA-HQ một lớp trên đường JAX thì giá trị này được đặt về
   \texttt{0.0};
@@ -81,10 +103,10 @@ Một số key quan trọng:
   \texttt{use\_swiglu}, \texttt{wo\_shift}, \texttt{use\_pos\_embed}.
 \end{itemize}
 
-Với config mặc định của branch này, \texttt{target} sẽ là \texttt{SiTDH} và
-adapter JAX sẽ ánh xạ nó sang backend \texttt{lightning\_ddt} trong khi vẫn giữ
-\texttt{interface\_class=sit}. Các target DDT legacy cũng đi cùng đường
-\texttt{lightning\_ddt}.
+Với branch này, \texttt{SiTDH} sẽ được ánh xạ sang backend
+\texttt{lightning\_ddt}, còn \texttt{SiT} sẽ được ánh xạ sang
+\texttt{lightning\_dit}. Adapter vẫn giữ \texttt{interface\_class=sit} cho cả
+hai, nên objective trên đường JAX vẫn là SiT / flow matching.
 
 \subsection{Block \texttt{guidance}}
 
@@ -109,6 +131,7 @@ training:
   ema_decay: 0.9995
   num_workers: 4
   prefetch_factor: 2
+  random_flip: false
   log_every: 100
   ckpt_every: 5000
   sample_every: 10000
@@ -132,23 +155,27 @@ Lưu ý:
   \item nếu \texttt{num\_workers > 0}, có thể tăng
   \texttt{prefetch\_factor} để queue trước nhiều batch hơn ở host-side
   PyTorch loader của đường JAX mà không đụng tới backend checkout;
+  \item \texttt{random\_flip} điều khiển việc chèn
+  \texttt{RandomHorizontalFlip()} ở raw-image transform của đường JAX trước khi
+  ảnh đi qua Stage 1; flow \texttt{StabilityVAE + SiT-B} của CelebA-HQ bật cờ
+  này mặc định;
   \item nếu bật \texttt{log\_rae\_latent\_stats=true}, đường JAX sẽ log
   \texttt{train\_rae\_latent\_rms} và \texttt{train\_rae\_latent\_var} cho
-  latent RAE thực sự đi vào Stage 2;
+  latent Stage 1 thực sự đi vào Stage 2; tên metric được giữ nguyên để tương
+  thích ngược kể cả khi Stage 1 là \texttt{StabilityVAE};
   \item nếu bật \texttt{log\_activation\_stats=true}, đường JAX sẽ yêu cầu
-  backend trả intermediate feature rồi log RMS/variance cho output của SiTDH
-  và từng block encoder/decoder, ví dụ
-  \texttt{train\_sitdh\_output\_rms},
-  \texttt{train\_sitdh\_act\_enc\_00\_rms}, và
-  \texttt{train\_sitdh\_act\_dec\_01\_var}.
+  backend trả intermediate feature rồi log RMS/variance cho output của Stage 2
+  và từng block; DH sẽ log theo tên \texttt{train\_sitdh\_*}, còn single-tower
+  sẽ log theo tên \texttt{train\_sit\_*}.
 \end{itemize}
 
 \subsection{Block \texttt{eval}}
 
 Đường JAX giờ dùng block \texttt{eval} cho cả validation loss lẫn online FID.
 Các key \texttt{data\_path}, \texttt{eval\_every}, \texttt{batch\_size},
-\texttt{num\_workers}, \texttt{prefetch\_factor}, \texttt{max\_batches}, và
-\texttt{eval\_model} sẽ điều khiển held-out validation loop trong
+\texttt{num\_workers}, \texttt{prefetch\_factor}, \texttt{random\_flip},
+\texttt{max\_batches}, và \texttt{eval\_model} sẽ điều khiển held-out
+validation loop trong
 \texttt{src\_jax/train.py}. Với
 \texttt{fid\_ref}, nên ưu tiên file \texttt{.pkl}/\texttt{.pickle} được build
 bởi \texttt{src\_jax/build\_fid\_stats.py}; nếu đưa file \texttt{.npz} cũ vào,

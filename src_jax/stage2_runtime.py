@@ -154,8 +154,51 @@ def _build_backend_eval_dataset(trainer: Any, config: Any) -> Any | None:
             cache=False,
         )
 
-    transform = trainer.local_imagenet_dataset.utils.build_transform(int(config.data.image_size))
+    transform = _build_backend_raw_transform(
+        trainer,
+        int(config.data.image_size),
+        random_flip=bool(config.eval.get("random_flip", False)),
+    )
     return trainer.local_imagenet_dataset.datasets.ImageFolder(root=str(eval_root), transform=transform)
+
+
+def _build_backend_raw_transform(trainer: Any, image_size: int, *, random_flip: bool) -> Any:
+    from torchvision import transforms
+
+    crop_fn = lambda image: trainer.local_imagenet_dataset.utils.center_crop_arr(image, image_size)
+    transform_steps: list[Any] = [crop_fn]
+    if random_flip:
+        transform_steps.append(transforms.RandomHorizontalFlip())
+    transform_steps.extend(
+        [
+            transforms.ToTensor(),
+            transforms.Normalize(mean=[0.5, 0.5, 0.5], std=[0.5, 0.5, 0.5]),
+        ]
+    )
+    return transforms.Compose(transform_steps)
+
+
+def _build_backend_train_dataset(trainer: Any, config: Any, image_size: int) -> Any:
+    if config.data.get("latent_dataset", False):
+        return trainer.local_imagenet_dataset.LatentDataset(
+            config.data.data_dir,
+            use_labels=True,
+            cache=False,
+        )
+
+    train_root = Path(str(config.data.data_dir)).expanduser().resolve() / "train"
+    if not train_root.exists():
+        raise FileNotFoundError(f"Training ImageFolder split not found: {train_root}")
+
+    transform = _build_backend_raw_transform(
+        trainer,
+        image_size,
+        random_flip=bool(config.data.get("random_flip", False)),
+    )
+    return trainer.local_imagenet_dataset.datasets.ImageFolder(
+        root=str(train_root),
+        transform=transform,
+    )
 
 
 def _resolve_prefetch_factor(raw: Any, *, num_workers: int) -> int | None:
@@ -279,13 +322,25 @@ def _set_intermediate_feature_logging(model: Any, enabled: bool) -> None:
         network.return_intermediate_features = bool(enabled)
 
 
-def _build_sitdh_activation_names(num_encoder_blocks: int, num_decoder_blocks: int) -> list[tuple[str, int]]:
+def _build_stage2_activation_names(network_cfg: Any) -> list[tuple[str, int]]:
+    num_encoder_blocks = int(network_cfg.get("num_encoder_blocks", 0))
+    num_decoder_blocks = int(network_cfg.get("num_decoder_blocks", 0))
     names: list[tuple[str, int]] = []
-    for idx in range(num_encoder_blocks):
-        names.append(("enc", idx))
-    for idx in range(num_decoder_blocks):
-        names.append(("dec", idx))
+    if num_encoder_blocks or num_decoder_blocks:
+        for idx in range(num_encoder_blocks):
+            names.append(("enc", idx))
+        for idx in range(num_decoder_blocks):
+            names.append(("dec", idx))
+        return names
+
+    depth = int(network_cfg.get("depth", 0))
+    for idx in range(depth):
+        names.append(("blk", idx))
     return names
+
+
+def _infer_stage2_metric_prefix(config: Any) -> str:
+    return "sitdh" if str(config.network_class) == "lightning_ddt" else "sit"
 
 
 def _patch_backend_train_loop_for_eval(trainer: Any) -> Any:
@@ -379,9 +434,8 @@ def _patch_backend_train_loop_for_eval(trainer: Any) -> Any:
         diagnostics_cfg = config.get("diagnostics", {})
         log_rae_latent_stats = bool(diagnostics_cfg.get("log_rae_latent_stats", False))
         log_activation_stats = bool(diagnostics_cfg.get("log_activation_stats", False))
-        num_encoder_blocks = int(config.network.get("num_encoder_blocks", 0))
-        num_decoder_blocks = int(config.network.get("num_decoder_blocks", 0))
-        activation_names = _build_sitdh_activation_names(num_encoder_blocks, num_decoder_blocks)
+        metric_prefix = _infer_stage2_metric_prefix(config)
+        activation_names = _build_stage2_activation_names(config.network)
         if not config.eval.get("loss_on") and not log_rae_latent_stats and not log_activation_stats:
             return original_train_and_evaluate(config, workdir)
 
@@ -403,12 +457,7 @@ def _patch_backend_train_loop_for_eval(trainer: Any) -> Any:
         if config.data.batch_size % trainer.jax.device_count() > 0:
             raise ValueError("Batch size must be divisible by the number of devices")
 
-        dataset = trainer.local_imagenet_dataset.build_imagenet_dataset(
-            is_train=True,
-            data_dir=config.data.data_dir,
-            image_size=image_size,
-            latent_dataset=config.data.latent_dataset,
-        )
+        dataset = _build_backend_train_dataset(trainer, config, image_size)
 
         encoder, model, optimizer, sampler, ema, learning_rate_fn = trainer.init_utils.build_models(config)
 
@@ -573,15 +622,15 @@ def _patch_backend_train_loop_for_eval(trainer: Any) -> Any:
                     metric_dict["rae_latent_rms"] = diag_stat_rms(latents)
                     metric_dict["rae_latent_var"] = diag_stat_var(latents)
                 if log_activation_stats:
-                    metric_dict["sitdh_output_rms"] = diag_stat_rms(net_out)
-                    metric_dict["sitdh_output_var"] = diag_stat_var(net_out)
+                    metric_dict[f"{metric_prefix}_output_rms"] = diag_stat_rms(net_out)
+                    metric_dict[f"{metric_prefix}_output_var"] = diag_stat_var(net_out)
                     for (stage_name, block_idx), feature in zip(
                         activation_names,
                         intermediate_features,
                         strict=False,
                     ):
-                        metric_dict[f"sitdh_act_{stage_name}_{block_idx:02d}_rms"] = diag_stat_rms(feature)
-                        metric_dict[f"sitdh_act_{stage_name}_{block_idx:02d}_var"] = diag_stat_var(feature)
+                        metric_dict[f"{metric_prefix}_act_{stage_name}_{block_idx:02d}_rms"] = diag_stat_rms(feature)
+                        metric_dict[f"{metric_prefix}_act_{stage_name}_{block_idx:02d}_var"] = diag_stat_var(feature)
                 return loss_dict["loss"].mean(), (loss_dict, metric_dict)
 
             grad_fn = trainer.nnx.value_and_grad(loss_fn, has_aux=True)

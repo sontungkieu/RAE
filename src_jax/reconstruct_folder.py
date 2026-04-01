@@ -10,7 +10,7 @@ except ImportError:
 
 
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description="Reconstruct an image folder with the JAX RAE stage-1 path.")
+    parser = argparse.ArgumentParser(description="Reconstruct an image folder with the JAX stage-1 path.")
     parser.add_argument("--config", required=True, help="Path to the repo YAML config.")
     parser.add_argument("--input", type=Path, required=True, help="Image file or directory to reconstruct.")
     parser.add_argument("--output-dir", type=Path, required=True, help="Destination directory for reconstructed images.")

@@ -3,17 +3,38 @@ from __future__ import annotations
 import unittest
 
 try:
-    from src.stage2.models.SiT import SiTDH
+    from src.stage2.models.SiT import SiT, SiTDH
     from src.stage2.models.DDT import DiTwDDTHead
+    from src.stage2.models.lightningDiT import LightningDiT
     _IMPORT_ERROR = None
 except Exception as exc:
+    SiT = None
     SiTDH = None
     DiTwDDTHead = None
+    LightningDiT = None
     _IMPORT_ERROR = exc
 
 
 @unittest.skipIf(_IMPORT_ERROR is not None, f"Missing dependency: {_IMPORT_ERROR}")
 class Stage2ModelTests(unittest.TestCase):
+    def test_sit_wraps_lightningdit_contract(self) -> None:
+        model = SiT(
+            input_size=32,
+            patch_size=2,
+            in_channels=4,
+            hidden_size=64,
+            depth=3,
+            num_heads=4,
+            mlp_ratio=2.0,
+            num_classes=1,
+        )
+
+        self.assertIsInstance(model, LightningDiT)
+        self.assertEqual(model.hidden_size, 64)
+        self.assertEqual(model.depth, 3)
+        self.assertEqual(model.num_heads, 4)
+        self.assertEqual(model.in_channels, 4)
+
     def test_sitdh_wraps_ddt_contract(self) -> None:
         model = SiTDH(
             input_size=16,

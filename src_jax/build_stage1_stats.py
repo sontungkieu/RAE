@@ -10,7 +10,7 @@ except ImportError:
 
 
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description="Build Stage-1 latent normalization statistics with the JAX RAE path.")
+    parser = argparse.ArgumentParser(description="Build Stage-1 latent normalization statistics with the JAX stage-1 path.")
     parser.add_argument("--config", required=True, help="Path to the repo YAML config.")
     parser.add_argument("--input", type=Path, required=True, help="Image file or directory used to estimate latent stats.")
     parser.add_argument("--output", type=Path, required=True, help="Destination .pt file containing mean/var tensors.")

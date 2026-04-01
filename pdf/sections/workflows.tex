@@ -281,18 +281,10 @@ python3 src_jax/train.py \
 
 \subsection{Notebook Kaggle cho CelebA-HQ}
 
-Repo hiện có notebook \texttt{raes-jax-celebahq-kaggle.ipynb} để bám đúng flow
-Kaggle:
+Nhánh này giữ một public notebook flow cho CelebA-HQ:
 
 \begin{itemize}[leftmargin=1.5em]
-  \item clone repo và checkout branch \texttt{jax-sit-dh-celebahq256};
-  \item đặt \texttt{UV\_PROJECT\_ENVIRONMENT=/tmp/.venv} và \texttt{UV\_CACHE\_DIR=/tmp/uv-cache};
-  \item chạy \texttt{uv sync -q} từ root của repo;
-  \item chạy các bước phụ thuộc package qua \texttt{uv run};
-  \item tải dataset Hugging Face \texttt{eurecom-ds/celeba-hq-256} rồi export thành \texttt{ImageFolder} \texttt{256x256};
-  \item tạo bootstrap identity stat, build latent stat cho Stage 1;
-  \item export reconstruction validation set, build \texttt{fid\_ref};
-  \item ghi sẵn config CelebA-HQ cho \texttt{src\_jax/train.py}.
+  \item \texttt{StabilityVAE + SiT-B}: baseline single-tower của nhánh hiện tại.
 \end{itemize}
 
 Script mặc định đứng sau bước export là \texttt{src\_jax/export\_celebahq\_hf.py}.
@@ -305,41 +297,40 @@ file manual chính thức và vẫn ép
 để tránh lỗi Kaggle kiểu ``Descriptors cannot be created directly'' khi
 protobuf trong môi trường không đồng nhất.
 
-Cell train Stage 2 cuối của các notebook CelebA-HQ truyền
-\texttt{--data-path /kaggle/working/celebahq256\_imgfolder}, còn
-\texttt{eval.data\_path} trong config sinh ra vẫn trỏ tới split
-\texttt{val}.
+Nếu muốn dùng baseline VAE mới, bắt đầu từ notebook
+\texttt{vaes-jax-celebahq-kaggle.ipynb}. Notebook này giữ nguyên flow
+\texttt{uv sync} và export Hugging Face sang \texttt{ImageFolder}, nhưng đổi
+Stage 1 sang \texttt{stage1.StabilityVAE} và Stage 2 sang single-tower
+\texttt{stage2.models.SiT.SiT}. Các config được sinh runtime là:
+
+\begin{itemize}[leftmargin=1.5em]
+  \item \texttt{configs/stage1/pretrained/CelebAHQ256\_StabilityVAE\_jax.yaml};
+  \item \texttt{configs/stage2/training/CelebAHQ256\_SiT-B\_StabilityVAE\_jax.yaml}.
+\end{itemize}
+
+Khác với flow RAE:
+
+\begin{itemize}[leftmargin=1.5em]
+  \item không có bước \texttt{hf download nyu-visionx/RAE-collections};
+  \item không cần bootstrap identity stat;
+  \item không bắt buộc phải chạy \texttt{src\_jax/build\_stage1\_stats.py}
+  trước khi train Stage 2;
+  \item bật \texttt{training.random\_flip=true} trong config Stage 2 sinh ra;
+  \item cell train cuối truyền \texttt{--data-path /kaggle/working/celebahq256\_imgfolder},
+  còn \texttt{eval.data\_path} trong config sinh ra vẫn trỏ tới split
+  \texttt{val}.
+\end{itemize}
 
 Nếu chạy trên Kaggle \texttt{TPU v5e-8}, dùng notebook
-\texttt{raes-jax-celebahq-kaggle-tpuv5e8-sitdh-s.ipynb}. Bản này cố định biến thể
-CelebA-HQ Stage 2 là \texttt{SiTDH-S}, sync dependency của repo vào
-\texttt{/tmp/.venv}, tự xóa cờ executable-stack mà Kaggle có thể chặn trên
-\texttt{jaxlib}, chạy bước xác nhận TPU trong một tiến trình Python mới, giữ
-Stage 1 và Stage 2 ở TPU, đồng thời build \texttt{fid\_ref} bằng đúng detector
-backend dùng cho online FID, và giữ cadence checkpoint mặc định ở mốc
-\texttt{210000} step.
+\texttt{vaes-jax-celebahq-kaggle-tpuv5e8-sitb.ipynb}. Bản này ghi config Stage
+2 thành \texttt{CelebAHQ256\_SiT-B\_StabilityVAE\_jax\_tpuv5e8.yaml}, dùng
+shape kiểu DiT-B là \texttt{hidden\_size=768}, \texttt{depth=12},
+\texttt{num\_heads=12}, \texttt{patch\_size=2}, và vẫn giữ objective
+\texttt{sit} / flow matching của repo này. Notebook TPU cũng đặt
+\texttt{training.prefetch\_factor=8} và \texttt{eval.prefetch\_factor=4} để
+host queue batch sâu hơn.
 
-Nếu muốn giữ nguyên flow đó nhưng đổi Stage 2 sang biến thể DH
-\texttt{SiTDH-B},
-dùng notebook \texttt{raes-jax-celebahq-kaggle-tpuv5e8-sitdh-b.ipynb}. Notebook
-này ghi config CelebA-HQ thành
-\texttt{CelebAHQ256\_SiTDH-B\_DINOv2-B\_jax\_tpuv5e8.yaml}, đặt backbone DH thành
-\texttt{hidden\_size=[768, 2048]}, \texttt{depth=[12, 2]},
-\texttt{num\_heads=[12, 16]}, bật \texttt{use\_pos\_embed}, tắt label dropout
-bằng \texttt{class\_dropout\_prob=0.0}, đặt tên run/project mặc định theo biến
-thể \texttt{SiTDH-B}, và
-giữ cùng cadence checkpoint \texttt{210000} step.
-
-Nếu đã có thư mục run Orbax của \texttt{SiTDH-B} và cần train tiếp, dùng
-notebook \texttt{raes-jax-celebahq-kaggle-tpuv5e8-sitdh-b-resume.ipynb}. Notebook
-này đã được rút xuống thành bản resume-only cho trường hợp bắt đầu từ output
-archive của notebook cũ: cell đầu chạy lệnh \texttt{unzip -o
-/kaggle/input/notebooks/kieuhongquan/rae-jax/\_output\_.zip -d
-/kaggle/working}, sau đó mới kiểm tra repo đã có sẵn, chạy \texttt{uv sync},
-fix \texttt{jaxlib}, lấy secret wandb, kiểm tra path, rồi tự tìm thư mục
-\texttt{CelebAHQ256\_SiTDH-B\_DINOv2-B\_jax\_tpuv5e8-*} mới nhất bên dưới
-\texttt{/kaggle/working/results\_jax\_tpu/}, rồi mới tìm thư mục
-\texttt{checkpoint\_<step>/} mới nhất trong workdir đó trước khi truyền
-\texttt{--workdir} vào \texttt{src\_jax/train.py}. Runtime tiếp tục restore
-\texttt{latest\_step()} từ checkpoint mới nhất, nên notebook này không còn
-hardcode cả thư mục run có timestamp lẫn \texttt{checkpoint\_100000}.
+Nếu đã có run Orbax của flow VAE và cần train tiếp, dùng notebook
+\texttt{vaes-jax-celebahq-kaggle-tpuv5e8-sitb-resume.ipynb}. Notebook này bám
+theo pattern resume-only của branch, nhưng tìm workdir mới nhất theo pattern
+\texttt{CelebAHQ256\_SiT-B\_StabilityVAE\_jax\_tpuv5e8-*}.

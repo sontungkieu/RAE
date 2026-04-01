@@ -116,45 +116,23 @@ python3 src_jax/train.py \
   Các lệnh này có thể dùng YAML chỉ có \texttt{stage\_1}, không cần
   \texttt{stage\_2.target}.
   \item Nếu chạy trên Kaggle với CelebA-HQ, bắt đầu từ notebook
-  \texttt{raes-jax-celebahq-kaggle.ipynb} để giữ đúng flow clone repo, đặt
-  \texttt{UV\_PROJECT\_ENVIRONMENT=/tmp/.venv} và
-  \texttt{UV\_CACHE\_DIR=/tmp/uv-cache}, chạy \texttt{uv sync -q}, tải
-  \texttt{eurecom-ds/celeba-hq-256} từ Hugging Face và export sang
-  \texttt{ImageFolder} bằng \texttt{src\_jax/export\_celebahq\_hf.py}, rồi
-  chạy các bước phụ thuộc package qua \texttt{uv run}. Route TFDS cũ vẫn còn
-  trong repo, nhưng chỉ đóng vai trò fallback khi cần source manual chính thức.
-  \item Nếu phần cứng là Kaggle \texttt{TPU v5e-8}, dùng notebook
-  \texttt{raes-jax-celebahq-kaggle-tpuv5e8-sitdh-s.ipynb}; bản này cố định biến
-  thể Stage 2 là \texttt{SiTDH-S}, chuyển FID và build reference stats sang
-  detector backend-native của JAX, đồng thời cũng sync dependency của repo vào
-  \texttt{/tmp/.venv} trước các bước \texttt{uv run}, tự xóa cờ executable-stack mà
-  Kaggle có thể chặn trên \texttt{jaxlib}, rồi kiểm tra \texttt{jax}/TPU bằng
-  tiến trình Python mới. Notebook này cũng tải \texttt{eurecom-ds/celeba-hq-256}
-  từ Hugging Face rồi export sang \texttt{ImageFolder} trước khi build Stage 1 stat, và đã bỏ override chẩn đoán
-  \texttt{ema\_decay=0.99} và giữ mốc checkpoint mặc định ở \texttt{210000}
-  step, nên mặc định quay lại EMA chuẩn của config.
-  \item Nếu cần cùng flow Kaggle TPU đó nhưng muốn train biến thể
-  \texttt{SiTDH-B}, dùng notebook
-  \texttt{raes-jax-celebahq-kaggle-tpuv5e8-sitdh-b.ipynb}. Bản này giữ toàn bộ
-  fix Kaggle/JAX hiện có, đổi Stage 2 sang recipe DH/two-tower
-  \texttt{SiTDH-B} với \texttt{hidden\_size=[768, 2048]},
-  \texttt{depth=[12, 2]}, \texttt{num\_heads=[12, 16]},
-  \texttt{use\_pos\_embed=true}, \texttt{class\_dropout\_prob=0.0}, và dùng
-  cùng cadence checkpoint \texttt{210000} step.
-  \item Nếu đã có sẵn một run Orbax của \texttt{SiTDH-B} và cần train tiếp từ
-  checkpoint hiện có, dùng notebook
-  \texttt{raes-jax-celebahq-kaggle-tpuv5e8-sitdh-b-resume.ipynb}. Notebook này
-  là bản resume-only tối giản cho trường hợp bắt đầu từ output archive của
-  notebook cũ: cell đầu chạy lệnh \texttt{unzip -o
-  /kaggle/input/notebooks/kieuhongquan/rae-jax/\_output\_.zip -d
-  /kaggle/working}, sau đó chỉ kiểm tra repo đã có sẵn, chạy \texttt{uv sync},
-  lấy secret wandb, kiểm tra path, rồi tự tìm thư mục run
-  \texttt{CelebAHQ256\_SiTDH-B\_DINOv2-B\_jax\_tpuv5e8-*} mới nhất bên dưới
-  \texttt{/kaggle/working/results\_jax\_tpu/} và thư mục
-  \texttt{checkpoint\_<step>/} mới nhất trong workdir đó trước khi truyền
-  \texttt{--workdir} vào \texttt{src\_jax/train.py}. Runtime cũng tiếp
-  tục restore bằng \texttt{latest\_step()}, nên notebook này không còn hardcode
-  \texttt{checkpoint\_100000}.
+  \texttt{vaes-jax-celebahq-kaggle.ipynb}. Bản này vẫn dùng
+  \texttt{src\_jax/export\_celebahq\_hf.py}, nhưng đổi Stage 1 sang
+  \texttt{stage1.StabilityVAE}, đổi Stage 2 sang single-tower
+  \texttt{SiT-B}, và bỏ hẳn bước bootstrap identity stat cùng pass
+  \texttt{build\_stage1\_stats.py} bắt buộc.
+  \item Nếu phần cứng là Kaggle \texttt{TPU v5e-8} và cần flow VAE đó trên TPU,
+  dùng \texttt{vaes-jax-celebahq-kaggle-tpuv5e8-sitb.ipynb}. Notebook này giữ
+  toàn bộ fix Kaggle/JAX hiện có, bật \texttt{training.random\_flip=true},
+  viết config Stage 2 thành
+  \texttt{CelebAHQ256\_SiT-B\_StabilityVAE\_jax\_tpuv5e8.yaml}, và dùng shape
+  single-tower \texttt{hidden\_size=768}, \texttt{depth=12},
+  \texttt{num\_heads=12}.
+  \item Nếu đã có run Orbax của flow \texttt{StabilityVAE + SiT-B} và cần
+  resume, dùng notebook
+  \texttt{vaes-jax-celebahq-kaggle-tpuv5e8-sitb-resume.ipynb}. Notebook này
+  dùng cùng pattern resume-only của bản DH, nhưng tự tìm thư mục
+  \texttt{CelebAHQ256\_SiT-B\_StabilityVAE\_jax\_tpuv5e8-*} mới nhất.
   \item Nếu cần huấn luyện Stage 1 kiểu GAN đầy đủ, hiện vẫn phải xem đây là
   phần chưa được JAX hóa trong branch này.
 \end{itemize}
@@ -164,8 +142,8 @@ python3 src_jax/train.py \
 \begin{enumerate}[leftmargin=1.8em]
   \item Xác nhận \texttt{stage\_1} và \texttt{stage\_2} khớp latent shape.
   \item Xác nhận dữ liệu train và val đúng dạng \texttt{ImageFolder}.
-  \item Với dataset mới, build lại \texttt{stage1\_stat.pt} thay vì tái dùng stat
-  của ImageNet nếu muốn latent normalization khớp dữ liệu hơn.
+  \item Với flow RAE và dataset mới, build lại \texttt{stage1\_stat.pt} thay vì
+  tái dùng stat của ImageNet nếu muốn latent normalization khớp dữ liệu hơn.
   \item Build \texttt{fid\_ref} trước nếu muốn FID ổn định.
   \item Export đủ biến wandb trước khi bật \texttt{--wandb}.
   \item Nếu muốn upload lên Hugging Face, xác nhận token nằm trong biến môi

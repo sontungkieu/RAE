@@ -430,18 +430,9 @@ building FID references or comparing Stage 1 decoder changes.
 
 ### Kaggle CelebA-HQ Notebook
 
-Use [../raes-jax-celebahq-kaggle.ipynb](../raes-jax-celebahq-kaggle.ipynb) when
-you want the standard Kaggle-style workflow end to end:
+This branch now keeps one public CelebA-HQ Kaggle notebook flow:
 
-- clone the repo and checkout `jax-sit-dh-celebahq256`
-- set `UV_PROJECT_ENVIRONMENT=/tmp/.venv` and `UV_CACHE_DIR=/tmp/uv-cache`
-- run `uv sync -q` from the repo root
-- run package-backed data/stat/reconstruction/train steps through `uv run`
-- download `eurecom-ds/celeba-hq-256` from Hugging Face and export it into a real `256x256` `ImageFolder`
-- create the bootstrap identity stats file
-- compute Stage 1 latent stats for CelebA-HQ
-- export Stage 1 reconstructions and build validation FID stats
-- write a CelebA-HQ Stage 2 config and launch `src_jax/train.py`
+- `StabilityVAE + SiT-B`: the single-tower VAE baseline for this branch
 
 The default helper script behind that step is
 [`src_jax/export_celebahq_hf.py`](../src_jax/export_celebahq_hf.py). It
@@ -455,52 +446,44 @@ is still available as a fallback if you specifically want the TFDS
 Python protobuf runtime before importing TFDS to avoid the common Kaggle
 descriptor crash.
 
-The final Stage 2 train cells in the CelebA-HQ notebooks pass
-`--data-path /kaggle/working/celebahq256_imgfolder`, while the generated
-config keeps `eval.data_path` on `/kaggle/working/celebahq256_imgfolder/val`.
-Those notebook train/resume cells also enable
-`--set training.log_rae_latent_stats=true` and
-`--set training.log_activation_stats=true` by default so wandb exposes latent
-and activation RMS/variance during the run. The TPU notebooks now also set
-`--set training.prefetch_factor=8` and `--set eval.prefetch_factor=4` so the
-host can queue batches more aggressively without immediately increasing
-`training.num_workers`. Expect a measurable throughput and memory cost when
-activation logging is enabled, because the backend now returns intermediate
-SiTDH features on every train step.
+If you want the VAE baseline on the same dataset, start from
+[../vaes-jax-celebahq-kaggle.ipynb](../vaes-jax-celebahq-kaggle.ipynb). That
+notebook keeps the same `uv sync` and Hugging Face export-to-`ImageFolder`
+workflow, but switches Stage 1 to `stage1.StabilityVAE` and Stage 2 to
+single-tower `stage2.models.SiT.SiT`. The generated configs are:
+
+- `configs/stage1/pretrained/CelebAHQ256_StabilityVAE_jax.yaml`
+- `configs/stage2/training/CelebAHQ256_SiT-B_StabilityVAE_jax.yaml`
+
+Key properties of this VAE notebook flow:
+
+- no `hf download nyu-visionx/RAE-collections` step
+- no bootstrap identity-stat file
+- no required `src_jax/build_stage1_stats.py` pass before Stage 2 training
+- `training.random_flip=true` is enabled in the generated Stage 2 config
+- Stage 2 uses the DiT-B-style `SiT-B` shape from the `shortcut-models`
+  CelebA example (`hidden_size=768`, `depth=12`, `num_heads=12`,
+  `patch_size=2`) while keeping this repo's `sit` flow-matching objective
+- the final train cell points `--data-path` at
+  `/kaggle/working/celebahq256_imgfolder` while the generated config keeps
+  `eval.data_path` on `/kaggle/working/celebahq256_imgfolder/val`
 
 For Kaggle `TPU v5e-8`, use
-[../raes-jax-celebahq-kaggle-tpuv5e8-sitdh-s.ipynb](../raes-jax-celebahq-kaggle-tpuv5e8-sitdh-s.ipynb).
-That copy fixes the Stage 2 CelebA-HQ variant to `SiTDH-S`, syncs the repo
-dependencies into `/tmp/.venv`, clears the `jaxlib` executable-stack flag that
-Kaggle can reject before each JAX import, runs the TPU device check in a fresh
-Python process, keeps Stage 1 and Stage 2 on TPU, builds the JAX `fid_ref` with
-the same backend detector used by online FID, and keeps the default checkpoint
-cadence at `210000` steps.
+[../vaes-jax-celebahq-kaggle-tpuv5e8-sitb.ipynb](../vaes-jax-celebahq-kaggle-tpuv5e8-sitb.ipynb).
+That notebook keeps the same TPU/JAX workarounds, writes the Stage 2 config as
+`CelebAHQ256_SiT-B_StabilityVAE_jax_tpuv5e8.yaml`, keeps
+`--data-path /kaggle/working/celebahq256_imgfolder`, and resumes the same
+host-side `prefetch_factor` controls. The TPU variants set
+`--set training.prefetch_factor=8` and `--set eval.prefetch_factor=4` so the
+host can queue batches more aggressively without immediately increasing
+`training.num_workers`.
 
-If you want the same Kaggle TPU flow but with the `SiTDH-B` DH Stage 2 setup, use
-[../raes-jax-celebahq-kaggle-tpuv5e8-sitdh-b.ipynb](../raes-jax-celebahq-kaggle-tpuv5e8-sitdh-b.ipynb).
-That notebook keeps the same JAX/TPU workarounds and data prep, but writes the
-CelebA-HQ Stage 2 config as `CelebAHQ256_SiTDH-B_DINOv2-B_jax_tpuv5e8.yaml`,
-using the DH two-tower layout `hidden_size=[768, 2048]`, `depth=[12, 2]`,
-`num_heads=[12, 16]`, enabling `use_pos_embed`, disabling label dropout with
-`class_dropout_prob=0.0`, and keeping the same `210000`-step
-checkpoint cadence.
-
-If you already have an Orbax run directory for `SiTDH-B` and want to continue
-training from its latest checkpoint, use
-[../raes-jax-celebahq-kaggle-tpuv5e8-sitdh-b-resume.ipynb](../raes-jax-celebahq-kaggle-tpuv5e8-sitdh-b-resume.ipynb).
-That notebook is intentionally stripped down for the common Kaggle resume case
-where you start from the archived output of the previous notebook. Its first
-cell runs `unzip -o /kaggle/input/notebooks/kieuhongquan/rae-jax/_output_.zip
--d /kaggle/working`, then it only checks that `/kaggle/working/RAE` is present,
-runs `uv sync`, applies the `jaxlib` executable-stack fix, loads the Kaggle
-secret, runs a path sanity-check for the restored dataset/FID/workdir files,
-and finishes with `src_jax/train.py --workdir ...`. The notebook first locates
-the newest `CelebAHQ256_SiTDH-B_DINOv2-B_jax_tpuv5e8-*` run directory under
-`/kaggle/working/results_jax_tpu/`, then both the shell pre-check and the
-runtime work from the newest `checkpoint_<step>` directory available under that
-workdir, so the notebook no longer hardcodes either the timestamped run folder
-or `checkpoint_100000`.
+If you already have an Orbax run directory for that VAE flow and want to
+continue training from its latest checkpoint, use
+[../vaes-jax-celebahq-kaggle-tpuv5e8-sitb-resume.ipynb](../vaes-jax-celebahq-kaggle-tpuv5e8-sitb-resume.ipynb).
+That notebook mirrors the resume-only Kaggle TPU pattern used by the DH
+notebook, but searches for the newest
+`CelebAHQ256_SiT-B_StabilityVAE_jax_tpuv5e8-*` run directory instead.
 
 ## 9. Upload a JAX Run to Hugging Face
 

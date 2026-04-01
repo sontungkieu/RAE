@@ -66,7 +66,7 @@ stage_1:
 
 Key fields:
 
-- `target`: usually `stage1.RAE`
+- `target`: usually `stage1.RAE`, or `stage1.StabilityVAE` on the new JAX VAE path
 - `ckpt`: optional full RAE checkpoint
 - `params.encoder_cls`: encoder implementation key from `src/stage1/encoders/`
 - `params.encoder_config_path`: Hugging Face config path for image processor and config
@@ -76,6 +76,30 @@ Key fields:
 - `params.noise_tau`: latent noising strength during training
 - `params.reshape_to_2d`: whether latent tokens become `(C, H, W)`
 - `params.normalization_stat_path`: optional latent mean/variance stats
+
+The new JAX VAE path uses a lighter Stage 1 block:
+
+```yaml
+stage_1:
+  target: stage1.StabilityVAE
+  ckpt: null
+  params:
+    sample_size: 256
+    latent_channels: 4
+    downsample_factor: 8
+    raw_mean: [0.865, -0.278, 0.216, 0.374]
+    raw_std: [4.86, 5.32, 3.94, 3.99]
+    final_mean: 0.0
+    final_std: 0.5
+```
+
+Notes for that path:
+
+- `pretrained_decoder_path` and `normalization_stat_path` are not required
+- the JAX adapter maps `stage1.StabilityVAE` to the backend-native
+  `StabilityVAE` encoder
+- when no Stage 2 block is present, the adapter can still infer
+  `latent_size=[4, 32, 32]` from the Stage 1 VAE parameters alone
 
 On the JAX path, dataset-specific stats are typically built with:
 
@@ -89,6 +113,8 @@ python3 src_jax/build_stage1_stats.py \
 
 The bootstrap identity stats file can contain `mean=0` and `var=1`, which keeps
 the first stats pass unnormalized while still satisfying the backend RAE loader.
+That bootstrap pass is still relevant for the RAE path, but it is not a
+required prerequisite for the new `StabilityVAE` CelebA-HQ notebooks.
 
 ## `stage_2`
 
@@ -130,14 +156,38 @@ Common fields:
 - feature toggles such as `use_rope`, `use_rmsnorm`, `use_swiglu`, and
   `use_pos_embed`
 
+The new single-tower JAX VAE flow uses a second Stage 2 surface:
+
+```yaml
+stage_2:
+  target: stage2.models.SiT.SiT
+  ckpt: null
+  params:
+    input_size: 32
+    patch_size: 2
+    in_channels: 4
+    hidden_size: 768
+    depth: 12
+    num_heads: 12
+    mlp_ratio: 4.0
+    class_dropout_prob: 0.0
+    num_classes: 1
+    use_qknorm: false
+    use_swiglu: true
+    use_rope: true
+    use_rmsnorm: true
+    wo_shift: false
+```
+
 For the JAX adapter:
 
 - `stage_2.ckpt` may be either a PyTorch `.pt` checkpoint or a JAX Orbax
   directory
 - `target` is used only to infer which NNX backbone should be instantiated;
-  branch-owned `SiTDH` targets map to `lightning_ddt`
+  branch-owned `SiTDH` targets map to `lightning_ddt`, while `SiT` maps to
+  `lightning_dit`
 - the adapter keeps `interface_class: sit`, so the transport objective stays
-  on the SiT path even though the network backbone is DH/two-tower
+  on the SiT path for both the DH/two-tower and single-tower backbones
 
 ## `transport`
 
@@ -250,6 +300,7 @@ training:
   ema_decay: 0.9995
   num_workers: 4
   prefetch_factor: 2
+  random_flip: false
   log_every: 100
   ckpt_every: 5000
   sample_every: 10000
@@ -275,14 +326,19 @@ Notes:
 - `prefetch_factor` is forwarded to the host-side PyTorch `DataLoader` on the
   JAX Stage 2 path when `num_workers > 0`; increasing it can hide host I/O
   latency spikes without changing model compute
+- `random_flip` controls whether the raw-image JAX Stage 2 transform inserts a
+  `RandomHorizontalFlip()` before Stage 1 encoding; the new CelebA-HQ
+  `StabilityVAE + SiT-B` recipe enables this by default
 - `log_rae_latent_stats: true` makes the JAX path log RMS and variance of the
-  Stage 1 RAE latents actually fed into Stage 2 as `train_rae_latent_rms` and
-  `train_rae_latent_var`
+  Stage 1 latents actually fed into Stage 2 as `train_rae_latent_rms` and
+  `train_rae_latent_var`; the metric name is kept for backward compatibility
+  even when Stage 1 is `StabilityVAE`
 - `log_activation_stats: true` makes the JAX path ask the backend SiT/SiTDH
   network for intermediate activations and log RMS/variance for the Stage 2
-  output plus each encoder/decoder block activation, for example
+  output plus each block activation. DH runs log names such as
   `train_sitdh_output_rms`, `train_sitdh_act_enc_00_rms`, and
-  `train_sitdh_act_dec_01_var`
+  `train_sitdh_act_dec_01_var`, while single-tower runs log names such as
+  `train_sit_output_rms` and `train_sit_act_blk_00_var`
 - nested `optimizer` and `scheduler` sub-blocks are also supported by
   `src/utils/optim_utils.py`
 
@@ -312,6 +368,7 @@ eval:
   batch_size: 128
   num_workers: 4
   prefetch_factor: 2
+  random_flip: false
   max_batches: 32
   eval_model: false
 ```
@@ -324,6 +381,8 @@ Meaning:
 - `num_workers`: dataloader workers for eval
 - `prefetch_factor`: per-worker prefetch depth for the host-side eval loader on
   the JAX path; only applies when `num_workers > 0`
+- `random_flip`: whether to keep horizontal flips on the raw-image eval path;
+  the CelebA-HQ notebooks leave this disabled for validation and FID
 - `max_batches`: optional per-rank cap
 - `eval_model`: score the non-EMA model in addition to EMA
 

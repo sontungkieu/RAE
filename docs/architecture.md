@@ -11,11 +11,13 @@ Representation Autoencoders (RAE):
    sampled latents back into images through the Stage 1 decoder.
 
 The XLA branch focuses on TPU execution for Stage 2 training and sampling, with
-optional host-side FID scoring. The `jax-sit-dh` branch also adds a thin JAX/NNX
-compatibility layer under `src_jax/` that maps the repository's existing YAML
-schema into a pinned `diffuse_nnx` backend, including backend-native FID
-reference building, held-out validation loss, and a compatibility patch that
-keeps backend EMA initialization aligned with the live model weights.
+optional host-side FID scoring. The current `jax-vae-sit-celebahq256` branch
+also adds a thin JAX/NNX compatibility layer under `src_jax/` that maps the
+repository's existing YAML schema into a pinned `diffuse_nnx` backend,
+including backend-native FID reference building, held-out validation loss, a
+compatibility patch that keeps backend EMA initialization aligned with the live
+model weights, and the public backend-native `StabilityVAE + SiT-B`
+CelebA-HQ flow.
 
 ## End-to-End Data Flow
 
@@ -30,12 +32,13 @@ image
 ```
 
 For Stage 2 training, the model does not learn directly in pixel space. The
-training loop first encodes images through the frozen RAE, then computes the
-transport loss in latent space.
+training loop first encodes images through the selected frozen Stage 1 encoder
+(`RAE` or `StabilityVAE` on the JAX VAE path), then computes the transport loss
+in latent space.
 
 ## Major Runtime Components
 
-### Stage 1: RAE
+### Stage 1: RAE and StabilityVAE
 
 Implemented in [src/stage1/rae.py](../src/stage1/rae.py).
 
@@ -52,13 +55,31 @@ Key behavior:
 - `decode(z)` reverses normalization, converts latent maps back to token
   sequences if needed, and reconstructs pixels through the ViT decoder.
 
+The JAX branch now also exposes
+[src/stage1/stability_vae.py](../src/stage1/stability_vae.py), which provides
+the repo-facing `stage1.StabilityVAE` target. That alias is intentionally
+thin: the real implementation comes from the vendored NNX backend. In practice
+this means:
+
+- no repo-side RAE decoder checkpoint is needed for that path
+- Stage 1 latent-stat bootstrap is optional instead of mandatory
+- the adapter can infer a default latent geometry of `[4, 32, 32]` at
+  `256x256`
+
 ### Stage 2: SiT in Latent Space
 
-The branch-default Stage 2 target is [src/stage2/models/SiT.py](../src/stage2/models/SiT.py),
-which exposes `SiTDH` as a repo-facing alias over the two-tower
-`DiTwDDTHead` implementation in [src/stage2/models/DDT.py](../src/stage2/models/DDT.py).
-This keeps the Stage 2 architecture aligned with the DH variant while the JAX
-adapter continues to use the `sit` transport interface.
+The shared Stage 2 surface is
+[src/stage2/models/SiT.py](../src/stage2/models/SiT.py), which now exposes two
+repo-facing aliases:
+
+- `SiTDH`: the DH/two-tower alias over
+  [DiTwDDTHead](../src/stage2/models/DDT.py)
+- `SiT`: the new single-tower alias over
+  [LightningDiT](../src/stage2/models/lightningDiT.py)
+
+This keeps the DH path available for manual config-driven experiments while the
+branch's public notebook flow uses the single-tower `SiT-B` surface. The JAX
+adapter keeps the same `sit` transport interface for both.
 
 Design highlights:
 
@@ -149,13 +170,16 @@ The JAX path is intentionally kept thin:
   `023afd23c7b62a8cdb00e840b36a4ab8fc970bba`
 - [src_jax/config_adapter.py](../src_jax/config_adapter.py):
   translates the repository's OmegaConf YAML into the backend config expected
-  by NNX, mapping `SiTDH` to the backend `lightning_ddt` network while keeping
-  the `sit` training interface
+  by NNX, mapping `SiTDH` to `lightning_ddt`, mapping `SiT` to
+  `lightning_dit`, mapping `stage1.StabilityVAE` to the backend-native
+  `StabilityVAE` encoder, inferring latent geometry when only Stage 1 is
+  defined, and forwarding `random_flip` plus prefetch knobs while keeping the
+  `sit` training interface
 - [src_jax/stage2_runtime.py](../src_jax/stage2_runtime.py):
   training, checkpoint loading, sampling, guidance wiring, JAX validation-loss
   integration, and FID glue for both EMA and optional online-model diagnostics
 - [src_jax/stage1_runtime.py](../src_jax/stage1_runtime.py):
-  shared JAX Stage 1 encoder loading, single-image reconstruction, folder reconstruction, and latent-stat accumulation
+  shared JAX Stage 1 encoder loading, single-image reconstruction, folder reconstruction, and latent-stat accumulation for both `stage1.RAE` and `stage1.StabilityVAE`
 - [src_jax/export_celebahq_hf.py](../src_jax/export_celebahq_hf.py):
   prepares the public Hugging Face CelebA-HQ source into a repo-compatible
   `ImageFolder` tree for Kaggle and local JAX workflows without manual tar
@@ -216,6 +240,7 @@ src/
     encoders/
     decoders/
     rae.py
+    stability_vae.py
   stage2/
     models/
     transport/
@@ -247,22 +272,24 @@ src_jax/
   sample_ddp.py
   stage1_sample.py
   push_hf.py
-raes-jax-celebahq-kaggle.ipynb
-raes-jax-celebahq-kaggle-tpuv5e8-sitdh-s.ipynb
-raes-jax-celebahq-kaggle-tpuv5e8-sitdh-b.ipynb
-raes-jax-celebahq-kaggle-tpuv5e8-sitdh-b-resume.ipynb
+vaes-jax-celebahq-kaggle.ipynb
+vaes-jax-celebahq-kaggle-tpuv5e8-sitb.ipynb
+vaes-jax-celebahq-kaggle-tpuv5e8-sitb-resume.ipynb
 ```
 
 ## Checkpoint Compatibility
 
-On this branch, `stage_2.ckpt` must already be compatible with the two-tower
-SiTDH/DiTwDDTHead shape.
+On this branch, `stage_2.ckpt` must already match the selected Stage 2 shape.
 
-- PyTorch `.pt` checkpoints are supported when they come from a SiTDH-compatible
-  model definition.
-- Orbax directories are supported when they come from previous SiTDH JAX runs.
+- PyTorch `.pt` checkpoints are supported when they come from either a
+  compatible single-tower `SiT` model or a compatible DH/two-tower `SiTDH`
+  model.
+- Orbax directories are supported when they come from previous JAX runs with
+  the same backend shape.
 - Legacy pre-DH SiTDH checkpoints are not auto-converted on this branch.
-- Stage 1 decoder checkpoints remain reusable on both the PyTorch and JAX paths.
+- Stage 1 decoder checkpoints remain reusable on the RAE path, while the
+  `StabilityVAE` path uses the backend-native VAE weights instead of a repo
+  decoder checkpoint.
 
 ## Experiment Artifacts
 
