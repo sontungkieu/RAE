@@ -50,7 +50,7 @@ Các giá trị này được chuyển sang encoder RAE của backend NNX để 
 reconstruction và decode latent khi sampling Stage 2.
 
 Nhánh hiện tại còn có path \texttt{stage1.StabilityVAE}. Với path này, notebook
-JAX CelebA-HQ chỉ cần các trường:
+JAX CelebA chỉ cần các trường:
 
 \begin{lstlisting}[style=rae]
 stage_1:
@@ -115,7 +115,7 @@ Một số key quan trọng:
   \texttt{SiTDH} đây là các cặp encoder/decoder của backbone DH, còn với
   \texttt{SiT} đây là các scalar của backbone single-tower;
   \item \texttt{class\_dropout\_prob}: tỉ lệ label dropout cho CFG; với
-  notebook CelebA-HQ một lớp trên đường JAX thì giá trị này được đặt về
+  notebook CelebA một lớp trên đường JAX thì giá trị này được đặt về
   \texttt{0.0};
   \item các toggle như \texttt{use\_rope}, \texttt{use\_rmsnorm},
   \texttt{use\_swiglu}, \texttt{wo\_shift}, \texttt{use\_pos\_embed}.
@@ -137,7 +137,7 @@ Block này chỉ áp dụng cho đường JAX:
 source:
   enabled: true
   kind: gmm_moe1
-  gmm_stats_path: artifacts/celebahq256_source_gmm.npz
+  gmm_stats_path: artifacts/celeba256_source_gmm.npz
   num_modes: 4
   condition_dim: 64
   hidden_channels: 128
@@ -223,8 +223,8 @@ Lưu ý:
   PyTorch loader của đường JAX mà không đụng tới backend checkout;
   \item \texttt{random\_flip} điều khiển việc chèn
   \texttt{RandomHorizontalFlip()} ở raw-image transform của đường JAX trước khi
-  ảnh đi qua Stage 1; các config CelebA-HQ của branch này mặc định bật cờ này
-  cho train nếu không override;
+  ảnh đi qua Stage 1; các config CelebA public của branch này mặc định bật cờ
+  này cho train nếu không override;
   \item nếu bật \texttt{log\_rae\_latent\_stats=true}, đường JAX sẽ log
   \texttt{train\_rae\_latent\_rms} và \texttt{train\_rae\_latent\_var} cho
   latent Stage 1 thực sự đi vào Stage 2; tên metric được giữ nguyên để tương
@@ -233,6 +233,11 @@ Lưu ý:
   backend trả intermediate feature rồi log RMS/variance cho output của Stage 2
   và từng block; DH sẽ log theo tên \texttt{train\_sitdh\_*}, còn single-tower
   sẽ log theo tên \texttt{train\_sit\_*}.
+  \item public notebook CelebA \texttt{moe1} override các default generic này
+  sang \texttt{training.num\_workers=16}, \texttt{eval.num\_workers=16},
+  \texttt{training.prefetch\_factor=4}, \texttt{eval.prefetch\_factor=4},
+  \texttt{training.log\_rae\_latent\_stats=true}, và
+  \texttt{training.log\_activation\_stats=true}.
 \end{itemize}
 
 \subsection{Block \texttt{eval}}
@@ -259,7 +264,9 @@ Các entrypoint JAX cho phép override nhanh bằng:
 python3 src_jax/train.py \
   --config <config> \
   --set training.global_batch_size=256 \
-  --set training.prefetch_factor=8 \
+  --set training.num_workers=16 \
+  --set training.prefetch_factor=4 \
+  --set eval.num_workers=16 \
   --set eval.prefetch_factor=4 \
   --set training.log_rae_latent_stats=true \
   --set training.log_activation_stats=true \
