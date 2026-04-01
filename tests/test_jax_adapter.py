@@ -18,6 +18,13 @@ except ModuleNotFoundError as exc:
 
 @unittest.skipIf(_IMPORT_ERROR is not None, f"Missing optional dependency: {_IMPORT_ERROR}")
 class JaxAdapterTests(unittest.TestCase):
+    def _write_temp_config(self, text: str, *, filename: str = "config.yaml") -> str:
+        temp_dir = tempfile.TemporaryDirectory()
+        self.addCleanup(temp_dir.cleanup)
+        config_path = Path(temp_dir.name) / filename
+        config_path.write_text(text, encoding="utf-8")
+        return str(config_path)
+
     def test_build_backend_config_maps_sitdh_to_lightning_ddt(self) -> None:
         repo_cfg, config_path = load_repo_config("configs/stage2/training/ImageNet256/SiTDH-XL_DINOv2-B.yaml")
         backend_cfg = build_backend_config_dict(
@@ -91,6 +98,75 @@ class JaxAdapterTests(unittest.TestCase):
             self.assertTrue(backend_cfg["eval"]["eval_model"])
             self.assertTrue(backend_cfg["eval"]["fid_on"])
             self.assertTrue(str(backend_cfg["data"]["stat_dir"]).endswith(".pkl"))
+
+    def test_prefetch_and_diagnostics_are_forwarded(self) -> None:
+        config_path = self._write_temp_config(
+            """
+stage_1:
+  target: stage1.RAE
+  params:
+    encoder_cls: Dinov2withNorm
+    encoder_config_path: facebook/dinov2-with-registers-base
+    encoder_input_size: 224
+    encoder_params:
+      dinov2_path: facebook/dinov2-with-registers-base
+      normalize: true
+    decoder_config_path: configs/decoder/ViTXL
+    pretrained_decoder_path: models/decoders/dinov2/wReg_base/ViTXL_n08/model.pt
+    noise_tau: 0.0
+    reshape_to_2d: true
+    normalization_stat_path: models/stats/dinov2/wReg_base/imagenet1k/stat.pt
+stage_2:
+  target: stage2.models.SiT.SiTDH
+  params:
+    input_size: 16
+    patch_size: 1
+    in_channels: 768
+    hidden_size: [384, 2048]
+    depth: [12, 2]
+    num_heads: [6, 16]
+    num_classes: 1000
+transport:
+  params:
+    time_dist_type: uniform
+sampler:
+  params:
+    sampling_method: euler
+misc:
+  latent_size: [768, 16, 16]
+  num_classes: 1000
+training:
+  epochs: 1
+  global_batch_size: 128
+  num_workers: 16
+  prefetch_factor: 4
+  log_rae_latent_stats: true
+  log_activation_stats: true
+eval:
+  data_path: /tmp/imagenet_val
+  eval_every: 100
+  batch_size: 8
+  prefetch_factor: 6
+"""
+        )
+        repo_cfg, resolved_config_path = load_repo_config(config_path)
+        backend_cfg = build_backend_config_dict(
+            repo_cfg,
+            config_path=resolved_config_path,
+            mode="train",
+            data_path="/tmp/imagenet_train",
+            precision="bf16",
+            seed=7,
+            num_train_samples=1281167,
+            enable_eval=True,
+        )
+
+        self.assertEqual(backend_cfg["data"]["num_workers"], 16)
+        self.assertEqual(backend_cfg["data"]["prefetch_factor"], 4)
+        self.assertTrue(backend_cfg["diagnostics"]["log_rae_latent_stats"])
+        self.assertTrue(backend_cfg["diagnostics"]["log_activation_stats"])
+        self.assertEqual(backend_cfg["eval"]["num_workers"], 16)
+        self.assertEqual(backend_cfg["eval"]["prefetch_factor"], 6)
 
     def test_infer_network_class_accepts_sitdh_target(self) -> None:
         repo_cfg, config_path = load_repo_config(

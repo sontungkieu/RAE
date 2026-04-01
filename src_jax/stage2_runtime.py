@@ -158,6 +158,66 @@ def _build_backend_eval_dataset(trainer: Any, config: Any) -> Any | None:
     return trainer.local_imagenet_dataset.datasets.ImageFolder(root=str(eval_root), transform=transform)
 
 
+def _resolve_prefetch_factor(raw: Any, *, num_workers: int) -> int | None:
+    if num_workers <= 0:
+        return None
+    if raw is None:
+        return 2
+    value = int(raw)
+    if value <= 0:
+        raise ValueError("prefetch_factor must be greater than 0 when num_workers > 0.")
+    return value
+
+
+def _build_backend_train_loader(trainer: Any, config: Any, dataset: Any, *, offset_seed: int) -> Any:
+    import torch
+
+    batch_size = int(config.data.batch_size)
+    local_batch_size = batch_size // max(1, trainer.jax.process_count())
+    num_workers = int(config.data.num_workers)
+    if num_workers < 0:
+        raise ValueError("training.num_workers must be non-negative.")
+
+    sampler = trainer.local_imagenet_dataset.InfiniteSampler(
+        dataset,
+        num_replicas=max(1, trainer.jax.process_count()),
+        rank=trainer.jax.process_index(),
+        shuffle=True,
+        seed=int(config.data.seed),
+    )
+
+    rng_torch = torch.Generator()
+    rng_torch.manual_seed(offset_seed)
+
+    loader_kwargs: dict[str, Any] = {
+        "dataset": dataset,
+        "sampler": sampler,
+        "batch_size": local_batch_size,
+        "num_workers": num_workers,
+        "pin_memory": True,
+        "drop_last": True,
+        "generator": rng_torch,
+    }
+    if num_workers > 0:
+        loader_kwargs.update(
+            {
+                "worker_init_fn": functools.partial(
+                    trainer.local_imagenet_dataset.seed_worker,
+                    offset_seed=offset_seed,
+                    global_seed=int(config.data.seed_pt),
+                ),
+                "persistent_workers": True,
+                "timeout": 1800.0,
+                "prefetch_factor": _resolve_prefetch_factor(
+                    config.data.get("prefetch_factor"),
+                    num_workers=num_workers,
+                ),
+            }
+        )
+
+    return torch.utils.data.DataLoader(**loader_kwargs)
+
+
 def _build_backend_eval_loader(trainer: Any, config: Any, dataset: Any) -> Any:
     import torch
 
@@ -169,30 +229,38 @@ def _build_backend_eval_loader(trainer: Any, config: Any, dataset: Any) -> Any:
     num_workers = int(config.eval.get("num_workers", config.data.num_workers))
     if num_workers < 0:
         raise ValueError("eval.num_workers must be non-negative.")
+    prefetch_factor = _resolve_prefetch_factor(
+        config.eval.get("prefetch_factor", config.data.get("prefetch_factor")),
+        num_workers=num_workers,
+    )
 
     process_index = trainer.jax.process_index()
     process_count = max(1, trainer.jax.process_count())
     local_indices = list(range(process_index, len(dataset), process_count))
     subset = torch.utils.data.Subset(dataset, local_indices)
-    worker_init_fn = None
+    loader_kwargs: dict[str, Any] = {
+        "dataset": subset,
+        "batch_size": local_batch_size,
+        "shuffle": False,
+        "num_workers": num_workers,
+        "pin_memory": True,
+        "drop_last": False,
+    }
     if num_workers > 0:
-        worker_init_fn = functools.partial(
-            trainer.local_imagenet_dataset.seed_worker,
-            offset_seed=0,
-            global_seed=int(config.data.seed_pt),
+        loader_kwargs.update(
+            {
+                "worker_init_fn": functools.partial(
+                    trainer.local_imagenet_dataset.seed_worker,
+                    offset_seed=0,
+                    global_seed=int(config.data.seed_pt),
+                ),
+                "persistent_workers": True,
+                "timeout": 60.0,
+                "prefetch_factor": prefetch_factor,
+            }
         )
 
-    return torch.utils.data.DataLoader(
-        subset,
-        batch_size=local_batch_size,
-        shuffle=False,
-        num_workers=num_workers,
-        pin_memory=True,
-        drop_last=False,
-        worker_init_fn=worker_init_fn,
-        persistent_workers=num_workers > 0,
-        timeout=60.0 if num_workers > 0 else 0.0,
-    )
+    return torch.utils.data.DataLoader(**loader_kwargs)
 
 
 def _metric_tree_to_host(metric_dict: Any) -> dict[str, float]:
@@ -200,6 +268,36 @@ def _metric_tree_to_host(metric_dict: Any) -> dict[str, float]:
 
     host_metrics = jax.device_get(metric_dict)
     return {key: float(np.asarray(value)) for key, value in host_metrics.items()}
+
+
+def _set_intermediate_feature_logging(model: Any, enabled: bool) -> None:
+    if hasattr(model, "ema"):
+        model = model.ema
+    interface = model.interface if hasattr(model, "interface") else model
+    network = getattr(interface, "network", None)
+    if network is not None and hasattr(network, "return_intermediate_features"):
+        network.return_intermediate_features = bool(enabled)
+
+
+def _build_stage2_activation_names(network_cfg: Any) -> list[tuple[str, int]]:
+    num_encoder_blocks = int(network_cfg.get("num_encoder_blocks", 0))
+    num_decoder_blocks = int(network_cfg.get("num_decoder_blocks", 0))
+    names: list[tuple[str, int]] = []
+    if num_encoder_blocks or num_decoder_blocks:
+        for idx in range(num_encoder_blocks):
+            names.append(("enc", idx))
+        for idx in range(num_decoder_blocks):
+            names.append(("dec", idx))
+        return names
+
+    depth = int(network_cfg.get("depth", 0))
+    for idx in range(depth):
+        names.append(("blk", idx))
+    return names
+
+
+def _infer_stage2_metric_prefix(config: Any) -> str:
+    return "sitdh" if str(config.network_class) == "lightning_ddt" else "sit"
 
 
 def _patch_backend_train_loop_for_eval(trainer: Any) -> Any:
@@ -290,7 +388,12 @@ def _patch_backend_train_loop_for_eval(trainer: Any) -> Any:
         return summary
 
     def patched_train_and_evaluate(config: Any, workdir: str):
-        if not config.eval.get("loss_on"):
+        diagnostics_cfg = config.get("diagnostics", {})
+        log_rae_latent_stats = bool(diagnostics_cfg.get("log_rae_latent_stats", False))
+        log_activation_stats = bool(diagnostics_cfg.get("log_activation_stats", False))
+        metric_prefix = _infer_stage2_metric_prefix(config)
+        activation_names = _build_stage2_activation_names(config.network)
+        if not config.eval.get("loss_on") and not log_rae_latent_stats and not log_activation_stats:
             return original_train_and_evaluate(config, workdir)
 
         image_size = config.data.image_size
@@ -380,7 +483,7 @@ def _patch_backend_train_loop_for_eval(trainer: Any) -> Any:
 
         step = 0 if restore_step is None else restore_step
 
-        loader = trainer.local_imagenet_dataset.build_imagenet_loader(config, dataset, offset_seed=step)
+        loader = _build_backend_train_loader(trainer, config, dataset, offset_seed=step)
         eval_dataset = _build_backend_eval_dataset(trainer, config)
         eval_loader = _build_backend_eval_loader(trainer, config, eval_dataset) if eval_dataset is not None else None
 
@@ -431,8 +534,99 @@ def _patch_backend_train_loop_for_eval(trainer: Any) -> Any:
         train_metrics_last_t = time.time()
         loader_iter = iter(loader)
 
+        def diag_stat_rms(x: Any) -> Any:
+            x = trainer.jnp.asarray(x, dtype=trainer.jnp.float32)
+            return trainer.jnp.sqrt(trainer.jnp.mean(trainer.jnp.square(x)))
+
+        def diag_stat_var(x: Any) -> Any:
+            x = trainer.jnp.asarray(x, dtype=trainer.jnp.float32)
+            return trainer.jnp.var(x)
+
+        def patched_train_step(
+            state: Any,
+            ema_state: Any,
+            batch: Any,
+            graph: Any,
+            ema_graph: Any,
+        ):
+            optimizer = trainer.nnx.merge(graph, state)
+            ema = trainer.nnx.merge(ema_graph, ema_state)
+            model = optimizer.model
+
+            latents, labels = batch["latents"], batch["labels"]
+
+            def loss_fn(model):
+                if log_activation_stats:
+                    if "features" in batch:
+                        loss_vec, net_out, aux_payload = model(
+                            latents,
+                            batch["features"],
+                            y=labels,
+                            return_aux=True,
+                        )
+                    else:
+                        loss_vec, net_out, aux_payload = model(
+                            latents,
+                            y=labels,
+                            return_aux=True,
+                        )
+                    if isinstance(aux_payload, dict):
+                        intermediate_features = aux_payload.get("intermediate_features", ())
+                        loss_dict = aux_payload.get("loss_dict", {"loss": loss_vec})
+                    else:
+                        intermediate_features = aux_payload
+                        loss_dict = {"loss": loss_vec}
+                else:
+                    if "features" in batch:
+                        loss_dict = model(latents, batch["features"], y=labels)
+                    else:
+                        loss_dict = model(latents, y=labels)
+                    net_out = None
+                    intermediate_features = ()
+
+                metric_dict = {}
+                if log_rae_latent_stats:
+                    metric_dict["rae_latent_rms"] = diag_stat_rms(latents)
+                    metric_dict["rae_latent_var"] = diag_stat_var(latents)
+                if log_activation_stats:
+                    metric_dict[f"{metric_prefix}_output_rms"] = diag_stat_rms(net_out)
+                    metric_dict[f"{metric_prefix}_output_var"] = diag_stat_var(net_out)
+                    for (stage_name, block_idx), feature in zip(
+                        activation_names,
+                        intermediate_features,
+                        strict=False,
+                    ):
+                        metric_dict[f"{metric_prefix}_act_{stage_name}_{block_idx:02d}_rms"] = diag_stat_rms(feature)
+                        metric_dict[f"{metric_prefix}_act_{stage_name}_{block_idx:02d}_var"] = diag_stat_var(feature)
+                return loss_dict["loss"].mean(), (loss_dict, metric_dict)
+
+            grad_fn = trainer.nnx.value_and_grad(loss_fn, has_aux=True)
+            (loss, (loss_dict, extra_metric_dict)), grads = grad_fn(model)
+
+            optimizer.update(grads)
+
+            grad_norm = trainer.jax.tree_util.tree_reduce(
+                lambda a, b: a + b,
+                trainer.jax.tree_util.tree_map(lambda g: trainer.jnp.sum(trainer.jnp.square(g)), grads),
+                initializer=0.0,
+            )
+
+            if hasattr(model, "interface"):
+                ema.update(model.interface)
+            else:
+                ema.update(model)
+            metric_dict = {
+                loss_type: loss.mean() for loss_type, loss in loss_dict.items()
+            }
+            metric_dict.update(extra_metric_dict)
+            metric_dict["grad_norm"] = grad_norm
+
+            _, state = trainer.nnx.split(optimizer)
+            _, ema_state = trainer.nnx.split(ema)
+            return state, ema_state, metric_dict
+
         p_train_step = trainer.jax.jit(
-            trainer.train_step,
+            patched_train_step,
             out_shardings=(state_sharding, ema_state_sharding, repl_sharding),
             static_argnums=(3, 4),
             donate_argnums=(0, 1),
@@ -955,9 +1149,12 @@ def run_stage2_training(args: argparse.Namespace) -> Path:
 
     original_build_models = init_utils.build_models
 
-    if backend_cfg_dict.get("torch_ckpt"):
-        def patched_build_models(config: Any):
-            encoder, model, optimizer, sampler, ema, learning_rate_fn = original_build_models(config)
+    def patched_build_models(config: Any):
+        encoder, model, optimizer, sampler, ema, learning_rate_fn = original_build_models(config)
+        log_activation_stats = bool(config.get("diagnostics", {}).get("log_activation_stats", False))
+        _set_intermediate_feature_logging(model, log_activation_stats)
+        _set_intermediate_feature_logging(ema, log_activation_stats)
+        if backend_cfg_dict.get("torch_ckpt"):
             _load_torch_weights_into_model(
                 torch_ckpt=backend_cfg_dict["torch_ckpt"],
                 config=config,
@@ -967,9 +1164,9 @@ def run_stage2_training(args: argparse.Namespace) -> Path:
                 port_module=port_module,
                 torch=torch,
             )
-            return encoder, model, optimizer, sampler, ema, learning_rate_fn
+        return encoder, model, optimizer, sampler, ema, learning_rate_fn
 
-        init_utils.build_models = patched_build_models
+    init_utils.build_models = patched_build_models
 
     original_create_default_writer = _patch_backend_metric_writer_for_kaggle(trainer)
     original_train_and_evaluate = _patch_backend_train_loop_for_eval(trainer)

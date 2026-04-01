@@ -248,7 +248,10 @@ training:
   global_batch_size: 1024
   grad_accum_steps: 1
   ema_decay: 0.9995
-  num_workers: 4
+  num_workers: 16
+  prefetch_factor: 4
+  log_rae_latent_stats: true
+  log_activation_stats: true
   log_every: 100
   ckpt_every: 5000
   sample_every: 10000
@@ -271,6 +274,12 @@ Notes:
 - scheduler supports `linear` and `cosine`
 - nested `optimizer` and `scheduler` sub-blocks are also supported by
   `src/utils/optim_utils.py`
+- on the JAX path, `prefetch_factor` controls the per-worker prefetch depth for
+  the host-side PyTorch train loader when `num_workers > 0`
+- on the JAX path, `log_rae_latent_stats: true` logs RMS and variance of the
+  latent tensor fed into Stage 2 as `train_rae_latent_*`
+- on the JAX path, `log_activation_stats: true` logs RMS and variance for the
+  Stage 2 output plus each SiTDH encoder/decoder block as `train_sitdh_*`
 
 The JAX adapter also accepts CLI overrides in the form:
 
@@ -278,6 +287,10 @@ The JAX adapter also accepts CLI overrides in the form:
 python3 src_jax/train.py \
   --config <config> \
   --set training.global_batch_size=256 \
+  --set training.prefetch_factor=4 \
+  --set eval.prefetch_factor=4 \
+  --set training.log_rae_latent_stats=true \
+  --set training.log_activation_stats=true \
   --set guidance.scale=1.5
 ```
 
@@ -294,7 +307,8 @@ eval:
   data_path: data/imagenet/val/
   eval_every: 5000
   batch_size: 128
-  num_workers: 4
+  num_workers: 16
+  prefetch_factor: 4
   max_batches: 32
   eval_model: false
 ```
@@ -305,12 +319,15 @@ Meaning:
 - `eval_every`: cadence in optimizer steps
 - `batch_size`: per-device evaluation batch size
 - `num_workers`: dataloader workers for eval
+- `prefetch_factor`: per-worker prefetch depth for the host-side JAX eval loader
 - `max_batches`: optional per-rank cap
 - `eval_model`: score the non-EMA model in addition to EMA
 
 On the JAX path, these keys now drive a held-out `ImageFolder` validation loop
 inside `src_jax/train.py`, logging `eval/ema_loss` by default plus the matching
 duration/batch counters. Set `eval_model: true` to also log `eval/model_loss`.
+If `eval.num_workers` or `eval.prefetch_factor` is omitted, the JAX adapter
+falls back to `training.num_workers` and `training.prefetch_factor`.
 
 ### FID Keys
 

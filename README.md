@@ -228,7 +228,7 @@ and add `--wandb` to the training command.
 
 Stage 2 training now logs the following namespaces:
 
-- `train/*`: loss, learning rate, optimizer steps/sec, images/sec, epoch, and gradient norm when clipping is enabled.
+- `train/*`: loss, learning rate, optimizer steps/sec, images/sec, epoch, and gradient norm when clipping is enabled. On the JAX path, enabling `training.log_rae_latent_stats=true` and `training.log_activation_stats=true` additionally logs `train_rae_latent_rms`, `train_rae_latent_var`, `train_sitdh_output_rms`, `train_sitdh_output_var`, and per-block SiTDH activation metrics such as `train_sitdh_act_enc_00_rms` and `train_sitdh_act_dec_01_var`.
 - `eval/*`: periodic validation loss on a held-out `ImageFolder` split
   (`eval/ema_loss` by default, plus `eval/model_loss` when enabled), together
   with duration/batch counters for each validation pass.
@@ -243,7 +243,8 @@ eval:
   data_path: data/imagenet/val/
   eval_every: 5000
   batch_size: 128        # per TPU core; defaults to the train micro batch size
-  num_workers: 4         # defaults to training.num_workers
+  num_workers: 16        # defaults to training.num_workers on the JAX path
+  prefetch_factor: 4     # defaults to training.prefetch_factor on the JAX path
   max_batches: 32        # optional cap per rank to limit eval cost
   eval_model: false      # set true to also evaluate the non-EMA model
   fid_ref: data/imagenet/VIRTUAL_imagenet256_labeled.npz
@@ -279,15 +280,20 @@ python3 src_jax/train.py \
   --data-path <imagenet_train_root> \
   --results-dir results_jax \
   --precision bf16 \
-  --wandb \
-  --set training.global_batch_size=256
+  --wandb
 ```
 
-On Kaggle TPU, prefer adding `--set training.num_workers=1` so the backend
-PyTorch loader stays compatible with `persistent_workers=True` without forking a
-large worker pool after JAX has already initialized multithreaded runtime
-state. The adapter also disables the backend TensorBoard summary writer on
-Kaggle and keeps metric logging on stdout plus wandb.
+The checked-in ImageNet SiTDH training configs on this branch now default to
+`training.num_workers=16`, `training.prefetch_factor=4`,
+`training.log_rae_latent_stats=true`, and
+`training.log_activation_stats=true`. If you also enable an `eval` block, the
+JAX adapter defaults `eval.num_workers` and `eval.prefetch_factor` to the same
+`16` / `4` values unless you override them explicitly.
+
+On Kaggle TPU, keep those as the first target if the host can sustain it, and
+only lower them from the CLI if that runtime becomes unstable. The adapter also
+disables the backend TensorBoard summary writer on Kaggle and keeps metric
+logging on stdout plus wandb.
 
 ```bash
 python3 src_jax/sample.py \

@@ -186,6 +186,8 @@ def build_backend_config_dict(
     fid_num_samples = int(eval_cfg.get("fid_num_samples", 0))
     loss_on = bool(eval_data_dir) and eval_every > 0
     fid_on = bool(eval_cfg.get("fid_ref")) and fid_num_samples > 0
+    log_rae_latent_stats = bool(training_cfg.get("log_rae_latent_stats", False))
+    log_activation_stats = bool(training_cfg.get("log_activation_stats", False))
 
     backend_cfg: dict[str, Any] = {
         "trainer": "DiT_ImageNet",
@@ -198,6 +200,10 @@ def build_backend_config_dict(
         "log_every_steps": int(training_cfg.get("log_every", 100)),
         "save_every_steps": int(training_cfg.get("ckpt_every", 5_000)),
         "visualize_every_steps": int(training_cfg.get("sample_every", 10_000)),
+        "diagnostics": {
+            "log_rae_latent_stats": log_rae_latent_stats,
+            "log_activation_stats": log_activation_stats,
+        },
         "data": {
             "data_dir": resolve_repo_value(data_path or eval_cfg.get("data_path"), config_path=config_path),
             "stat_dir": maybe_convert_fid_reference(resolve_repo_value(eval_cfg.get("fid_ref"), config_path=config_path)),
@@ -206,6 +212,7 @@ def build_backend_config_dict(
             "latent_dataset": False,
             "num_train_samples": num_train_samples,
             "num_workers": int(training_cfg.get("num_workers", 4)),
+            "prefetch_factor": int(training_cfg.get("prefetch_factor", 2)),
             "seed": cfg_seed,
             "seed_pt": cfg_seed,
         },
@@ -302,6 +309,7 @@ def build_backend_config_dict(
             "batch_size": int(eval_cfg.get("fid_per_proc_batch_size", 4)),
             "loss_batch_size": int(eval_cfg.get("batch_size", 4)),
             "num_workers": int(eval_cfg.get("num_workers", training_cfg.get("num_workers", 4))),
+            "prefetch_factor": int(eval_cfg.get("prefetch_factor", training_cfg.get("prefetch_factor", 2))),
             "fid_on": fid_on,
             "fid_eval_model": bool(eval_cfg.get("fid_eval_model", False)),
             "inception_batch_size": int(eval_cfg.get("fid_batch_size", 64)),

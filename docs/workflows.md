@@ -178,10 +178,18 @@ python3 src_jax/train.py \
   --wandb
 ```
 
-On Kaggle TPU, prefer adding `--set training.num_workers=1` so the backend
-PyTorch loader stays compatible with `persistent_workers=True` without forking a
-large worker pool after JAX has already initialized multithreaded runtime
-state. The adapter also disables the backend TensorBoard summary writer on
+The checked-in ImageNet SiTDH configs now default to:
+
+- `training.num_workers=16`
+- `training.prefetch_factor=4`
+- `training.log_rae_latent_stats=true`
+- `training.log_activation_stats=true`
+
+If you enable an `eval` block, the JAX adapter also lets `eval.num_workers` and
+`eval.prefetch_factor` inherit the same `16` / `4` values unless you override
+them explicitly. On Kaggle TPU, start from those defaults if the host can
+sustain them, and only lower them from the CLI when that runtime becomes
+unstable. The adapter also disables the backend TensorBoard summary writer on
 Kaggle and keeps metric logging on stdout plus wandb.
 
 Useful additions:
@@ -216,7 +224,8 @@ adapter bridges the legacy `ENTITY`, `PROJECT`, and `WANDB_KEY` names into the
 
 Current Stage 2 namespaces:
 
-- `train/*`
+- `train/*`, including `train_rae_latent_*`, `train_sitdh_output_*`, and
+  `train_sitdh_act_*` on the JAX path when diagnostics are enabled
 - `eval/*`
 - `checkpoint/*`
 - `network_samples`

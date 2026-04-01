@@ -107,7 +107,10 @@ training:
   epochs: 1400
   global_batch_size: 1024
   ema_decay: 0.9995
-  num_workers: 4
+  num_workers: 16
+  prefetch_factor: 4
+  log_rae_latent_stats: true
+  log_activation_stats: true
   log_every: 100
   ckpt_every: 5000
   sample_every: 10000
@@ -125,15 +128,25 @@ Lưu ý:
   \texttt{total\_steps} từ \texttt{num\_train\_samples};
   \item optimizer mặc định vẫn là AdamW;
   \item scheduler được chuẩn hóa về các mode đơn giản như
-  \texttt{constant}, \texttt{linear}, \texttt{cosine}.
+  \texttt{constant}, \texttt{linear}, \texttt{cosine};
+  \item trên đường JAX, \texttt{prefetch\_factor} điều khiển độ sâu prefetch
+  theo từng worker cho host-side train loader khi \texttt{num\_workers > 0};
+  \item nếu bật \texttt{log\_rae\_latent\_stats=true}, adapter sẽ log
+  \texttt{train\_rae\_latent\_*};
+  \item nếu bật \texttt{log\_activation\_stats=true}, adapter sẽ log
+  RMS/variance cho output Stage 2 và từng block; DH sẽ log theo tên
+  \texttt{train\_sitdh\_*}.
 \end{itemize}
 
 \subsection{Block \texttt{eval}}
 
 Đường JAX giờ dùng block \texttt{eval} cho cả validation loss lẫn online FID.
 Các key \texttt{data\_path}, \texttt{eval\_every}, \texttt{batch\_size},
-\texttt{num\_workers}, \texttt{max\_batches}, và \texttt{eval\_model} sẽ điều
-khiển held-out validation loop trong \texttt{src\_jax/train.py}. Với
+\texttt{num\_workers}, \texttt{prefetch\_factor}, \texttt{max\_batches}, và
+\texttt{eval\_model} sẽ điều khiển held-out validation loop trong
+\texttt{src\_jax/train.py}. Nếu không khai báo \texttt{eval.num\_workers} hoặc
+\texttt{eval.prefetch\_factor}, adapter JAX sẽ fallback về giá trị tương ứng ở
+block \texttt{training}. Với
 \texttt{fid\_ref}, nên ưu tiên file \texttt{.pkl}/\texttt{.pickle} được build
 bởi \texttt{src\_jax/build\_fid\_stats.py}; nếu đưa file \texttt{.npz} cũ vào,
 adapter vẫn tự chuyển nó sang định dạng pickle mà backend NNX hiểu được.
@@ -150,6 +163,10 @@ Các entrypoint JAX cho phép override nhanh bằng:
 python3 src_jax/train.py \
   --config <config> \
   --set training.global_batch_size=256 \
+  --set training.prefetch_factor=4 \
+  --set eval.prefetch_factor=4 \
+  --set training.log_rae_latent_stats=true \
+  --set training.log_activation_stats=true \
   --set guidance.scale=1.5
 \end{lstlisting}
 

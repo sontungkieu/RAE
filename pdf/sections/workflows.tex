@@ -155,11 +155,18 @@ python3 src_jax/train.py \
   --wandb
 \end{lstlisting}
 
-Trên Kaggle TPU, nên thêm \texttt{--set training.num\_workers=1} để backend
-PyTorch loader vẫn tương thích với \texttt{persistent\_workers=True} mà không
-\texttt{fork()} cả một pool worker lớn sau khi JAX đã khởi tạo runtime đa
-luồng. Adapter cũng tự tắt backend TensorBoard summary writer trên Kaggle và
-giữ metric ở stdout cùng wandb.
+Các config ImageNet \texttt{SiTDH} được commit sẵn trên branch này giờ mặc định
+đặt \texttt{training.num\_workers=16}, \texttt{training.prefetch\_factor=4},
+\texttt{training.log\_rae\_latent\_stats=true}, và
+\texttt{training.log\_activation\_stats=true}. Nếu bật block \texttt{eval},
+adapter JAX cũng cho \texttt{eval.num\_workers} và
+\texttt{eval.prefetch\_factor} kế thừa cùng bộ mặc định \texttt{16 / 4} trừ khi
+override riêng.
+
+Trên Kaggle TPU, nên bắt đầu từ bộ mặc định này nếu host chịu được; chỉ khi
+runtime đó không ổn định mới hạ worker/prefetch bằng CLI. Adapter cũng tự tắt
+backend TensorBoard summary writer trên Kaggle và giữ metric ở stdout cùng
+wandb.
 
 Điểm quan trọng:
 
@@ -217,7 +224,12 @@ python3 src_jax/build_fid_stats.py \
 Trên đường JAX, metric \texttt{FID-4K (cfg=...)} mặc định vẫn chấm EMA. Nếu bật
 \texttt{fid\_eval\_model}, adapter sẽ log thêm metric riêng
 \texttt{FID-4K/model (cfg=...)} cho online model để bạn đối chiếu trực tiếp với
-panel \texttt{network\_samples}.
+panel \texttt{network\_samples}. Nếu bật hai cờ diagnostics trong block
+\texttt{training}, đường JAX còn log thêm \texttt{train\_rae\_latent\_rms},
+\texttt{train\_rae\_latent\_var}, \texttt{train\_sitdh\_output\_rms},
+\texttt{train\_sitdh\_output\_var}, và RMS/variance cho từng block
+\texttt{SiTDH} như \texttt{train\_sitdh\_act\_enc\_00\_rms} hoặc
+\texttt{train\_sitdh\_act\_dec\_01\_var}.
 
 \subsection{Sampling Stage 2}
 

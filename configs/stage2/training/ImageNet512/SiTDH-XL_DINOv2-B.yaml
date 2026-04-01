@@ -62,7 +62,8 @@ misc:
 #   data_path: 'data/imagenet/val/'
 #   eval_every: 5000
 #   batch_size: 128
-#   num_workers: 4
+#   num_workers: 16
+#   prefetch_factor: 4
 #   max_batches: 32
 #   eval_model: false
 #   fid_ref: 'data/imagenet/VIRTUAL_imagenet512_labeled.npz'
@@ -81,7 +82,10 @@ training:
   global_batch_size: 1024
   grad_accum_steps: 1 # change according to your GPU memory
   ema_decay: 0.9995
-  num_workers: 4
+  num_workers: 16
+  prefetch_factor: 4
+  log_rae_latent_stats: true
+  log_activation_stats: true
   log_every: 100
   ckpt_every: 5000
   sample_every: 10000
