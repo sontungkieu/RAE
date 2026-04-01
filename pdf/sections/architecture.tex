@@ -32,9 +32,9 @@ src_jax/
   sample_ddp.py
   stage1_sample.py
   push_hf.py
-vaes-jax-celebahq-kaggle-moe1.ipynb
-vaes-jax-celebahq-kaggle-tpuv5e8-sitb-moe1.ipynb
-vaes-jax-celebahq-kaggle-tpuv5e8-sitb-moe1-resume.ipynb
+vaes-jax-celeba-kaggle-moe1.ipynb
+vaes-jax-celeba-kaggle-tpuv5e8-sitb-moe1.ipynb
+vaes-jax-celeba-kaggle-tpuv5e8-sitb-moe1-resume.ipynb
 \end{lstlisting}
 
 \subsection{Stage 1: Representation Autoencoder và StabilityVAE}
@@ -68,7 +68,7 @@ Hành vi chính:
   \item mặc định tự materialize checkpoint \texttt{vae\_trial1.pkl} cục bộ từ
   \texttt{stabilityai/sd-vae-ft-mse}, trừ khi
   \texttt{stage\_1.params.pretrained\_path} đã trỏ tới pickle sẵn có;
-  \item không bắt buộc phải bootstrap latent stat trước khi chạy CelebA-HQ;
+  \item không bắt buộc phải bootstrap latent stat trước khi chạy flow CelebA public;
   \item mặc định suy ra latent shape \texttt{[4, 32, 32]} ở độ phân giải
   \texttt{256x256}.
 \end{itemize}
@@ -86,7 +86,7 @@ File này giờ có hai alias repo-facing:
 \end{itemize}
 
 Nhờ đó nhánh hiện tại vẫn giữ được đường \texttt{SiTDH} ở mức code/config khi
-cần, đồng thời public notebook flow của CelebA-HQ tập trung vào
+cần, đồng thời public notebook flow của CelebA tập trung vào
 \texttt{StabilityVAE + SiT-B + moe1}. Objective trên đường JAX mặc định vẫn đi
 qua interface \texttt{sit} cho cả hai dạng backbone, nhưng có thể chuyển sang
 \texttt{sit\_gmm\_moe1} khi config có block \texttt{source}.
@@ -146,8 +146,8 @@ File & Vai trò \\
  \texttt{src\_jax/stage1\_runtime.py} & Load encoder Stage 1 JAX, reconstruction một ảnh, reconstruction cả thư mục và tích lũy latent stat cho cả \texttt{RAE} lẫn \texttt{StabilityVAE} \\
  \texttt{src\_jax/build\_stage1\_stats.py} & Tạo file \texttt{stat.pt} theo định dạng mean / var để dùng lại cho Stage 1 \\
  \texttt{src\_jax/build\_source\_gmm.py} & Encode dữ liệu qua \texttt{stage1.StabilityVAE}, flatten latent đã scaled, fit diagonal GMM, và ghi artifact cho block \texttt{source} \\
- \texttt{src\_jax/export\_celebahq\_hf.py} & Download \texttt{eurecom-ds/celeba-hq-256} từ Hugging Face rồi export thành cây \texttt{ImageFolder} cho pipeline JAX hiện tại \\
- \texttt{src\_jax/export\_celebahq\_tfds.py} & Export TFDS \texttt{celeb\_a\_hq/256} thành cây \texttt{ImageFolder} cho pipeline JAX hiện tại và ép protobuf runtime kiểu Python để tránh lỗi import TFDS trên Kaggle \\
+ \texttt{src\_jax/export\_celebahq\_hf.py} & Download \texttt{eurecom-ds/celeba-hq-256} từ Hugging Face rồi export thành cây \texttt{ImageFolder} cho các thử nghiệm CelebA-HQ thủ công \\
+ \texttt{src\_jax/export\_celebahq\_tfds.py} & Export TFDS \texttt{celeb\_a\_hq/256} thành cây \texttt{ImageFolder} cho các thử nghiệm CelebA-HQ thủ công và ép protobuf runtime kiểu Python để tránh lỗi import TFDS trên Kaggle \\
  \texttt{src\_jax/build\_fid\_stats.py} & Build \texttt{fid\_ref} bằng đúng detector Flax Inception của backend JAX \\
  \texttt{src\_jax/reconstruct\_folder.py} & Export reconstruction cho cả thư mục ảnh theo pipeline JAX \\
 \texttt{src\_jax/moe1/} & Chứa GMM utils, \texttt{SourceMoE}, và source-side losses dùng chung giữa repo và backend overlay \\
@@ -188,7 +188,7 @@ không còn bắt đầu từ một EMA cold-start sai ngay từ step đầu.
 
 \subsection{Checkpoint và tương thích trọng số}
 
-Với branch \texttt{jax-vae-sit-moe1-celebahq256}, checkpoint Stage 2 phải khớp shape
+Với branch \texttt{jax-vae-sit-moe1}, checkpoint Stage 2 phải khớp shape
 của backbone đã chọn:
 
 \begin{itemize}[leftmargin=1.5em]
