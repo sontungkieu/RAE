@@ -470,6 +470,8 @@ Key properties of this VAE notebook flow:
 - no required `src_jax/build_stage1_stats.py` pass before Stage 2 training
 - one required `src_jax/build_source_gmm.py` pass before Stage 2 training
 - `training.random_flip=true` is enabled in the generated Stage 2 config
+- `training.log_rae_latent_stats=true` and `training.log_activation_stats=true`
+  are enabled in the generated Stage 2 config
 - Stage 2 uses the DiT-B-style `SiT-B` shape from the `shortcut-models`
   CelebA example (`hidden_size=768`, `depth=12`, `num_heads=12`,
   `patch_size=2`) while keeping this repo's `sit` flow-matching objective
@@ -497,7 +499,10 @@ continue training from its latest checkpoint, use
 [../vaes-jax-celebahq-kaggle-tpuv5e8-sitb-moe1-resume.ipynb](../vaes-jax-celebahq-kaggle-tpuv5e8-sitb-moe1-resume.ipynb).
 That notebook mirrors the resume-only Kaggle TPU pattern used by the DH
 notebook, but searches for the newest
-`CelebAHQ256_SiT-B_StabilityVAE_moe1_jax_tpuv5e8-*` run directory instead.
+`CelebAHQ256_SiT-B_StabilityVAE_moe1_jax_tpuv5e8-*` run directory instead. Its
+resume train cell also re-applies `training.log_rae_latent_stats=true` and
+`training.log_activation_stats=true` from the CLI so resumed runs keep the same
+diagnostics enabled by default.
 
 ## 9. Upload a JAX Run to Hugging Face
 

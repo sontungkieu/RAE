@@ -320,6 +320,8 @@ Khác với flow RAE:
   trước khi train Stage 2;
   \item phải chạy \texttt{src\_jax/build\_source\_gmm.py} trước khi train Stage 2;
   \item bật \texttt{training.random\_flip=true} trong config Stage 2 sinh ra;
+  \item bật luôn \texttt{training.log\_rae\_latent\_stats=true} và
+  \texttt{training.log\_activation\_stats=true} trong config Stage 2 sinh ra;
   \item preview sample, sampling CLI, và online FID khởi tạo từ learned source prior thay vì pure Gaussian latent;
   \item cell train cuối truyền \texttt{--data-path /kaggle/working/celebahq256\_imgfolder},
   còn \texttt{eval.data\_path} trong config sinh ra vẫn trỏ tới split
@@ -341,4 +343,7 @@ diagnostics của VAE, RMS/variance cho activation của SiT, và source metrics
 Nếu đã có run Orbax của flow VAE và cần train tiếp, dùng notebook
 \texttt{vaes-jax-celebahq-kaggle-tpuv5e8-sitb-moe1-resume.ipynb}. Notebook này bám
 theo pattern resume-only của branch, nhưng tìm workdir mới nhất theo pattern
-\texttt{CelebAHQ256\_SiT-B\_StabilityVAE\_moe1\_jax\_tpuv5e8-*}.
+\texttt{CelebAHQ256\_SiT-B\_StabilityVAE\_moe1\_jax\_tpuv5e8-*}. Cell train
+resume cũng truyền lại \texttt{training.log\_rae\_latent\_stats=true} và
+\texttt{training.log\_activation\_stats=true} qua CLI để run resume vẫn giữ
+diagnostics mặc định.
