@@ -300,7 +300,7 @@ training:
   ema_decay: 0.9995
   num_workers: 4
   prefetch_factor: 2
-  random_flip: false
+  random_flip: true
   log_every: 100
   ckpt_every: 5000
   sample_every: 10000
@@ -327,8 +327,8 @@ Notes:
   JAX Stage 2 path when `num_workers > 0`; increasing it can hide host I/O
   latency spikes without changing model compute
 - `random_flip` controls whether the raw-image JAX Stage 2 transform inserts a
-  `RandomHorizontalFlip()` before Stage 1 encoding; the new CelebA-HQ
-  `StabilityVAE + SiT-B` recipe enables this by default
+  `RandomHorizontalFlip()` before Stage 1 encoding; CelebA-HQ configs on this
+  branch default it to `true` for training unless you override it
 - `log_rae_latent_stats: true` makes the JAX path log RMS and variance of the
   Stage 1 latents actually fed into Stage 2 as `train_rae_latent_rms` and
   `train_rae_latent_var`; the metric name is kept for backward compatibility

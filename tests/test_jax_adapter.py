@@ -18,10 +18,10 @@ except ModuleNotFoundError as exc:
 
 @unittest.skipIf(_IMPORT_ERROR is not None, f"Missing optional dependency: {_IMPORT_ERROR}")
 class JaxAdapterTests(unittest.TestCase):
-    def _write_temp_config(self, text: str) -> str:
+    def _write_temp_config(self, text: str, *, filename: str = "config.yaml") -> str:
         temp_dir = tempfile.TemporaryDirectory()
         self.addCleanup(temp_dir.cleanup)
-        config_path = Path(temp_dir.name) / "config.yaml"
+        config_path = Path(temp_dir.name) / filename
         config_path.write_text(text, encoding="utf-8")
         return str(config_path)
 
@@ -328,6 +328,40 @@ eval:
 
         self.assertTrue(backend_cfg["data"]["random_flip"])
         self.assertFalse(backend_cfg["eval"]["random_flip"])
+
+    def test_celebahq_configs_default_training_random_flip_to_true(self) -> None:
+        config_path = self._write_temp_config(
+            """
+stage_1:
+  target: stage1.StabilityVAE
+  params:
+    sample_size: 256
+    latent_channels: 4
+    downsample_factor: 8
+stage_2:
+  target: stage2.models.SiT.SiT
+  params:
+    input_size: 32
+    patch_size: 2
+    in_channels: 4
+misc:
+  latent_size: [4, 32, 32]
+""",
+            filename="CelebAHQ256_SiT-B_StabilityVAE.yaml",
+        )
+        repo_cfg, resolved_config_path = load_repo_config(config_path)
+        backend_cfg = build_backend_config_dict(
+            repo_cfg,
+            config_path=resolved_config_path,
+            mode="train",
+            data_path="/tmp/celebahq256_imgfolder",
+            precision="bf16",
+            seed=7,
+            num_train_samples=30_000,
+            enable_eval=False,
+        )
+
+        self.assertTrue(backend_cfg["data"]["random_flip"])
 
 
 if __name__ == "__main__":

@@ -173,8 +173,9 @@ The JAX path is intentionally kept thin:
   by NNX, mapping `SiTDH` to `lightning_ddt`, mapping `SiT` to
   `lightning_dit`, mapping `stage1.StabilityVAE` to the backend-native
   `StabilityVAE` encoder, inferring latent geometry when only Stage 1 is
-  defined, and forwarding `random_flip` plus prefetch knobs while keeping the
-  `sit` training interface
+  defined, forwarding `random_flip` plus prefetch knobs, defaulting CelebA-HQ
+  train configs to horizontal flips unless overridden, and keeping the `sit`
+  training interface
 - [src_jax/stage2_runtime.py](../src_jax/stage2_runtime.py):
   training, checkpoint loading, sampling, guidance wiring, JAX validation-loss
   integration, and FID glue for both EMA and optional online-model diagnostics

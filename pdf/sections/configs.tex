@@ -131,7 +131,7 @@ training:
   ema_decay: 0.9995
   num_workers: 4
   prefetch_factor: 2
-  random_flip: false
+  random_flip: true
   log_every: 100
   ckpt_every: 5000
   sample_every: 10000
@@ -157,8 +157,8 @@ Lưu ý:
   PyTorch loader của đường JAX mà không đụng tới backend checkout;
   \item \texttt{random\_flip} điều khiển việc chèn
   \texttt{RandomHorizontalFlip()} ở raw-image transform của đường JAX trước khi
-  ảnh đi qua Stage 1; flow \texttt{StabilityVAE + SiT-B} của CelebA-HQ bật cờ
-  này mặc định;
+  ảnh đi qua Stage 1; các config CelebA-HQ của branch này mặc định bật cờ này
+  cho train nếu không override;
   \item nếu bật \texttt{log\_rae\_latent\_stats=true}, đường JAX sẽ log
   \texttt{train\_rae\_latent\_rms} và \texttt{train\_rae\_latent\_var} cho
   latent Stage 1 thực sự đi vào Stage 2; tên metric được giữ nguyên để tương

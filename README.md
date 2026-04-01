@@ -354,7 +354,7 @@ Key behavior:
 - `src_jax/export_celebahq_hf.py` is now the default CelebA-HQ exporter for Kaggle and local JAX flows: it downloads `eurecom-ds/celeba-hq-256` from Hugging Face into a cache directory and materializes the dataset into the `ImageFolder` layout still expected by the current JAX training pipeline, without requiring TFDS manual tar files.
 - `src_jax/export_celebahq_tfds.py` remains available as a fallback for the official TFDS `celeb_a_hq/256` path; it still requires the manual tar files under `--manual-dir`, and it forces the pure-Python protobuf runtime before importing TFDS so Kaggle does not trip over the common descriptor-compatibility crash.
 - for dataset-specific Stage 1 stats, start from a bootstrap identity stats file (`mean=0`, `var=1`) and override `stage_1.params.normalization_stat_path` during the stats pass.
-- `training.random_flip` and `eval.random_flip` now control the raw-image transform on the JAX Stage 2 path, so the new `StabilityVAE + SiT-B` CelebA-HQ recipe can enable horizontal flips without touching the backend checkout.
+- `training.random_flip` and `eval.random_flip` now control the raw-image transform on the JAX Stage 2 path; CelebA-HQ configs on this branch default training-time horizontal flips on, while eval/FID stays unflipped unless you opt in explicitly.
 - `ENTITY` / `PROJECT` / `WANDB_KEY` are bridged to the `WANDB_*` variables expected by the JAX backend.
 - `--hf-repo-id` on `src_jax/train.py` uploads the finished workdir directly to Hugging Face.
 - `src_jax/build_fid_stats.py` builds backend-native `fid_ref` files with the same Flax Inception detector used by JAX online FID.
