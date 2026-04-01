@@ -221,6 +221,39 @@ sampler:
         self.assertNotIn("pretrained_path", backend_cfg["encoder"])
         self.assertNotIn("pretrained_model_name_or_path", backend_cfg["encoder"])
 
+    def test_stage1_stabilityvae_forwards_optional_pretrained_path(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            weights_path = Path(tmp_dir) / "vae_trial1.pkl"
+            weights_path.write_bytes(b"stub")
+            config_path = Path(tmp_dir) / "config.yaml"
+            config_path.write_text(
+                f"""
+stage_1:
+  target: stage1.StabilityVAE
+  params:
+    sample_size: 256
+    latent_channels: 4
+    downsample_factor: 8
+    pretrained_path: {weights_path.name}
+""".strip()
+                + "\n",
+                encoding="utf-8",
+            )
+            repo_cfg, resolved_config_path = load_repo_config(str(config_path))
+            backend_cfg = build_backend_config_dict(
+                repo_cfg,
+                config_path=resolved_config_path,
+                mode="sample",
+                data_path="/tmp/celebahq256",
+                precision="bf16",
+                seed=7,
+                num_train_samples=30_000,
+                enable_eval=False,
+                require_stage2=False,
+            )
+
+            self.assertEqual(backend_cfg["encoder"]["pretrained_path"], str(weights_path.resolve()))
+
     def test_train_data_dir_normalizes_split_path_back_to_root(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir:
             root = Path(tmp_dir) / "celebahq256_imgfolder"

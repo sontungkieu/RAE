@@ -98,6 +98,11 @@ Notes for that path:
 - `pretrained_decoder_path` and `normalization_stat_path` are not required
 - the JAX adapter maps `stage1.StabilityVAE` to the backend-native
   `StabilityVAE` encoder
+- optional `pretrained_path` may point to an existing backend-compatible
+  `vae_trial1.pkl`
+- when `pretrained_path` is unset, the first `StabilityVAE` run materializes the
+  default backend-compatible `vae_trial1.pkl` locally from
+  `stabilityai/sd-vae-ft-mse`
 - when no Stage 2 block is present, the adapter can still infer
   `latent_size=[4, 32, 32]` from the Stage 1 VAE parameters alone
 

@@ -58,7 +58,7 @@ Use the docs folder as the detailed guide for this branch:
 2. If you want to use the JAX/NNX adapter in `src_jax/`, also install:
    ```bash
    uv pip install "jax[cuda12]==0.5.1" flax==0.10.4 optax==0.2.4 orbax-checkpoint==0.11.16
-   uv pip install ml-collections clu absl-py etils datasets huggingface_hub tensorflow-datasets
+   uv pip install ml-collections clu absl-py etils datasets diffusers huggingface_hub tensorflow-datasets
    ```
 
    Notes:
@@ -66,7 +66,7 @@ Use the docs folder as the detailed guide for this branch:
    - If Kaggle TPU rejects `jaxlib/xla_extension.so` with `cannot enable executable stack`, run `uv run python scripts/clear_elf_execstack.py --package jaxlib` once inside the same environment.
    - The JAX Kaggle notebooks now set `UV_PROJECT_ENVIRONMENT=/tmp/.venv`, `UV_CACHE_DIR=/tmp/uv-cache`, and use `uv sync -q` against the repo `pyproject.toml` before running the package-backed cells.
    - This repo patches the pinned `diffuse_nnx` checkout to import Dinov2 models from `transformers` subpackages, and the supported version for that path is `transformers==4.57.1`.
-   - The same backend patch also lazy-loads `google-cloud-storage`, so the RAE/DINO Stage-1 path does not need that package unless you actually use backend components that fetch assets from GCS.
+   - The same backend patch still lazy-loads `google-cloud-storage` for the remaining GCS-backed encoder assets, but the public `stage1.StabilityVAE` path now materializes its default `vae_trial1.pkl` locally from `stabilityai/sd-vae-ft-mse` instead of depending on the old backend bucket.
    - The backend bootstrap patch also fixes `diffuse_nnx` EMA initialization so the EMA starts from a copy of the current model instead of an all-zero parameter tree. Old Orbax checkpoints keep the EMA state they already saved, so start a fresh run if you need the corrected EMA trajectory.
    - The JAX adapter derives the Stage-1 latent `downsample_factor` and `latent_channels` from `misc.latent_size`, so backend preview sampling and FID operate at latent resolution instead of accidentally allocating image-resolution latent noise.
    - `src_jax/` pins `diffuse_nnx` at commit `023afd23c7b62a8cdb00e840b36a4ab8fc970bba` and bootstraps it into `~/.cache/rae_jax/diffuse_nnx` on first run.
@@ -75,7 +75,7 @@ Use the docs folder as the detailed guide for this branch:
 
 ### Download Pre-trained Models
 
-The upstream asset collection still contains the original RAE decoders, legacy DiT<sup>DH</sup> checkpoints, and latent-normalization stats. The default `StabilityVAE + SiT-B` CelebA-HQ workflow on this branch does not require an external RAE decoder download. If you still want to run a manual `RAE + SiTDH` experiment through YAML and the existing entrypoints, you can download the shared RAE assets with:
+The upstream asset collection still contains the original RAE decoders, legacy DiT<sup>DH</sup> checkpoints, and latent-normalization stats. The default `StabilityVAE + SiT-B` CelebA-HQ workflow on this branch does not require an external RAE decoder download; on the first `StabilityVAE` run, the repo materializes the backend-compatible `vae_trial1.pkl` locally from `stabilityai/sd-vae-ft-mse`. If you already have a compatible pickle and want to skip that download, point `stage_1.params.pretrained_path` at it. If you still want to run a manual `RAE + SiTDH` experiment through YAML and the existing entrypoints, you can download the shared RAE assets with:
 
 
 ```bash
@@ -346,6 +346,7 @@ Key behavior:
 
 - `src_jax/` accepts the same top-level YAML blocks: `stage_1`, `stage_2`, `transport`, `sampler`, `guidance`, `misc`, `training`, and `eval`.
 - `stage1.StabilityVAE` now maps to the backend-native `StabilityVAE` encoder, so the JAX VAE flow can reconstruct and sample without `pretrained_decoder_path` or `normalization_stat_path`.
+- when `stage_1.params.pretrained_path` is unset on that path, the first run materializes the default backend-compatible `vae_trial1.pkl` from `stabilityai/sd-vae-ft-mse` into the cached backend checkout; set the field if you want to reuse an existing local pickle instead.
 - `stage2.models.SiT.SiT` now maps to the backend single-tower `lightning_dit`, while `stage2.models.SiT.SiTDH` still maps to the DH/two-tower `lightning_ddt`.
 - `stage_2.ckpt` compatibility now follows the selected Stage 2 target: single-tower `SiT` checkpoints must match the `lightning_dit` shape, while `SiTDH` checkpoints must match the DH/two-tower `lightning_ddt` shape.
 - `--set key=value` applies OmegaConf CLI overrides without adding a second config format.

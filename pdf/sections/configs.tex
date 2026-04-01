@@ -69,6 +69,10 @@ Path này không cần \texttt{pretrained\_decoder\_path} hay
 \texttt{normalization\_stat\_path}; adapter sẽ map nó sang encoder
 \texttt{StabilityVAE} native của backend và có thể tự suy ra latent shape
 \texttt{[4, 32, 32]} khi config chưa có \texttt{stage\_2}.
+Nếu đã có checkpoint VAE tương thích, bạn có thể truyền thêm
+\texttt{stage\_1.params.pretrained\_path}. Nếu không truyền, lần chạy đầu tiên
+sẽ tự materialize \texttt{vae\_trial1.pkl} cục bộ từ
+\texttt{stabilityai/sd-vae-ft-mse}.
 
 Nếu cần tính stat riêng cho dataset mới, có thể dùng:
 

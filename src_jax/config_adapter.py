@@ -164,9 +164,10 @@ def _build_encoder_config(
     stage1_encoder_model: str | None,
     decoder_ckpt: str | None,
     stats_path: str | None,
+    stability_vae_pretrained_path: str | None,
 ) -> dict[str, Any]:
     if encoder_class == "StabilityVAE":
-        return {
+        encoder_cfg = {
             "sample_size": int(stage1_params.get("sample_size", resolved_image_size)),
             "latent_channels": int(stage1_params.get("latent_channels", latent_size[0])),
             "downsample_factor": int(
@@ -181,6 +182,9 @@ def _build_encoder_config(
             "final_std": float(stage1_params.get("final_std", 0.5)),
             "encoded_pixels": False,
         }
+        if stability_vae_pretrained_path:
+            encoder_cfg["pretrained_path"] = stability_vae_pretrained_path
+        return encoder_cfg
 
     return {
         "pretrained_path": decoder_ckpt,
@@ -292,6 +296,10 @@ def build_backend_config_dict(
         stage1_params.get("encoder_params", {}).get("dinov2_path") or stage1_params.get("encoder_config_path"),
         config_path=config_path,
     )
+    stability_vae_pretrained_path = resolve_repo_value(
+        stage1_params.get("pretrained_path"),
+        config_path=config_path,
+    )
     decoder_ckpt = resolve_repo_value(stage1_params.get("pretrained_decoder_path"), config_path=config_path)
     stats_path = resolve_repo_value(stage1_params.get("normalization_stat_path"), config_path=config_path)
     encoder_cfg = _build_encoder_config(
@@ -302,6 +310,7 @@ def build_backend_config_dict(
         stage1_encoder_model=stage1_encoder_model,
         decoder_ckpt=decoder_ckpt,
         stats_path=stats_path,
+        stability_vae_pretrained_path=stability_vae_pretrained_path,
     )
 
     batch_size = int(training_cfg.get("global_batch_size", 1024))

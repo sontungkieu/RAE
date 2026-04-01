@@ -19,7 +19,7 @@ uv pip install "numpy<2" "transformers==4.57.1" einops
 
 \begin{lstlisting}[style=rae]
 uv pip install "jax[cuda12]==0.5.1" flax==0.10.4 optax==0.2.4 orbax-checkpoint==0.11.16
-uv pip install ml-collections clu absl-py etils huggingface_hub
+uv pip install ml-collections clu absl-py etils datasets diffusers huggingface_hub tensorflow-datasets
 \end{lstlisting}
 
 Lần chạy JAX đầu tiên sẽ tự bootstrap backend \texttt{diffuse\_nnx} vào thư mục
@@ -31,9 +31,10 @@ này; chúng đặt \texttt{UV\_PROJECT\_ENVIRONMENT=/tmp/.venv},
 Repo này tự vá backend \texttt{diffuse\_nnx} để import các model Dinov2 từ
 subpackage của \texttt{transformers}, nên nên dùng
 \texttt{transformers==4.57.1} cho đường này.
-Patch này cũng chuyển \texttt{google-cloud-storage} sang import lười, nên đường
-Stage 1 với RAE/DINO không cần cài package đó trừ khi bạn thực sự dùng các
-thành phần backend có tải asset từ GCS.
+Patch này cũng chuyển \texttt{google-cloud-storage} sang import lười cho các
+asset encoder còn đi qua GCS, còn đường public \texttt{stage1.StabilityVAE} sẽ
+tự materialize \texttt{vae\_trial1.pkl} cục bộ từ
+\texttt{stabilityai/sd-vae-ft-mse} thay vì phụ thuộc bucket cũ của backend.
 Patch bootstrap này cũng sửa khởi tạo EMA của backend để EMA bắt đầu từ bản
 copy của model hiện thời thay vì cây tham số toàn số 0. Nếu bạn resume một
 checkpoint Orbax cũ được tạo trước khi có fix này, checkpoint đó vẫn mang EMA

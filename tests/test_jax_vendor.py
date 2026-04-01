@@ -46,6 +46,18 @@ class JaxVendorPatchTests(unittest.TestCase):
                 "        self.decay = decay\n",
                 encoding="utf-8",
             )
+            (backend_dir / "networks" / "encoders" / "sd_vae.py").write_text(
+                "class StabilityVAE:\n"
+                "    def initialize(self):\n"
+                "        ckpt_path = os.path.join(Path(__file__).parent, self.pretrained_path)\n"
+                "        if not os.path.exists(ckpt_path):\n"
+                "            utils.download_blob('will-data', 'stats/vae_trial1.pkl', ckpt_path)\n"
+                "            \n"
+                "        with open(ckpt_path, 'rb') as f:\n"
+                "            params = pickle.load(f)\n"
+                "        return params\n",
+                encoding="utf-8",
+            )
 
             _apply_backend_compat_patches(backend_dir)
 
@@ -54,6 +66,11 @@ class JaxVendorPatchTests(unittest.TestCase):
             self.assertIn("self.ema.eval()", ema_text)
             self.assertNotIn("jnp.zeros_like", ema_text)
             self.assertNotIn("nnx.update(self.ema, ema_state)", ema_text)
+
+            sd_vae_text = (backend_dir / "networks" / "encoders" / "sd_vae.py").read_text(encoding="utf-8")
+            self.assertIn("ensure_stability_vae_checkpoint", sd_vae_text)
+            self.assertIn("StabilityVAE checkpoint not found", sd_vae_text)
+            self.assertNotIn("utils.download_blob('will-data'", sd_vae_text)
 
 
 if __name__ == "__main__":

@@ -62,6 +62,9 @@ thin: the real implementation comes from the vendored NNX backend. In practice
 this means:
 
 - no repo-side RAE decoder checkpoint is needed for that path
+- the default backend-compatible `vae_trial1.pkl` is materialized locally from
+  `stabilityai/sd-vae-ft-mse` on first use, unless
+  `stage_1.params.pretrained_path` already points at an existing pickle
 - Stage 1 latent-stat bootstrap is optional instead of mandatory
 - the adapter can infer a default latent geometry of `[4, 32, 32]` at
   `256x256`

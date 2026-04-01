@@ -24,7 +24,7 @@ JAX / NNX additions for `src_jax/`:
 
 ```bash
 uv pip install "jax[cuda12]==0.5.1" flax==0.10.4 optax==0.2.4 orbax-checkpoint==0.11.16
-uv pip install ml-collections clu absl-py etils datasets huggingface_hub tensorflow-datasets
+uv pip install ml-collections clu absl-py etils datasets diffusers huggingface_hub tensorflow-datasets
 ```
 
 The first JAX run automatically bootstraps `diffuse_nnx` into
@@ -36,9 +36,10 @@ run `uv sync -q` against the repo `pyproject.toml` before the package-backed
 cells.
 This repo patches the pinned `diffuse_nnx` checkout to import the Dinov2 models
 from `transformers` subpackages, so use `transformers==4.57.1` on this path.
-The same patch also lazy-loads `google-cloud-storage`, so the RAE/DINO Stage 1
-path does not need that package unless you actually use backend code that pulls
-assets from GCS.
+The same patch also lazy-loads `google-cloud-storage` for the remaining
+GCS-backed encoder assets, while the public `stage1.StabilityVAE` path now
+materializes its default `vae_trial1.pkl` locally from
+`stabilityai/sd-vae-ft-mse` instead of depending on the old backend bucket.
 The bootstrap patch also fixes the backend EMA initialization so the EMA starts
 from a copy of the live model instead of an all-zero parameter tree. Existing
 Orbax checkpoints keep the EMA state they already saved, so use a fresh run if

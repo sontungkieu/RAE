@@ -65,6 +65,9 @@ Hành vi chính:
 
 \begin{itemize}[leftmargin=1.5em]
   \item không cần \texttt{pretrained\_decoder\_path} của RAE;
+  \item mặc định tự materialize checkpoint \texttt{vae\_trial1.pkl} cục bộ từ
+  \texttt{stabilityai/sd-vae-ft-mse}, trừ khi
+  \texttt{stage\_1.params.pretrained\_path} đã trỏ tới pickle sẵn có;
   \item không bắt buộc phải bootstrap latent stat trước khi chạy CelebA-HQ;
   \item mặc định suy ra latent shape \texttt{[4, 32, 32]} ở độ phân giải
   \texttt{256x256}.

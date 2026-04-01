@@ -111,6 +111,40 @@ def _apply_backend_compat_patches(backend_dir: Path) -> None:
         ),
     )
 
+    sd_vae_path = backend_dir / "networks" / "encoders" / "sd_vae.py"
+    _patch_backend_file(
+        sd_vae_path,
+        (
+            "    def initialize(self):\n"
+            "        ckpt_path = os.path.join(Path(__file__).parent, self.pretrained_path)\n"
+            "        if not os.path.exists(ckpt_path):\n"
+            "            utils.download_blob('will-data', 'stats/vae_trial1.pkl', ckpt_path)\n"
+            "            \n"
+            "        with open(ckpt_path, 'rb') as f:\n"
+            "            params = pickle.load(f)\n"
+            "        return params\n"
+        ),
+        (
+            "    def initialize(self):\n"
+            "        ckpt_path = Path(self.pretrained_path)\n"
+            "        if not ckpt_path.is_absolute():\n"
+            "            ckpt_path = Path(__file__).parent / ckpt_path\n"
+            "\n"
+            "        if not ckpt_path.exists():\n"
+            "            if ckpt_path.name != 'vae_trial1.pkl':\n"
+            "                raise FileNotFoundError(f'StabilityVAE checkpoint not found: {ckpt_path}')\n"
+            "            try:\n"
+            "                from src_jax.stability_vae_assets import ensure_stability_vae_checkpoint\n"
+            "            except ImportError:\n"
+            "                from stability_vae_assets import ensure_stability_vae_checkpoint\n"
+            "            ensure_stability_vae_checkpoint(ckpt_path)\n"
+            "\n"
+            "        with open(ckpt_path, 'rb') as f:\n"
+            "            params = pickle.load(f)\n"
+            "        return params\n"
+        ),
+    )
+
     ema_path = backend_dir / "utils" / "ema.py"
     _patch_backend_file(
         ema_path,
