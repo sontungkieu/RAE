@@ -287,9 +287,9 @@ src_jax/
   sample_ddp.py
   stage1_sample.py
   push_hf.py
-vaes-jax-celebahq-kaggle.ipynb
-vaes-jax-celebahq-kaggle-tpuv5e8-sitb.ipynb
-vaes-jax-celebahq-kaggle-tpuv5e8-sitb-resume.ipynb
+vaes-jax-celebahq-kaggle-moe1.ipynb
+vaes-jax-celebahq-kaggle-tpuv5e8-sitb-moe1.ipynb
+vaes-jax-celebahq-kaggle-tpuv5e8-sitb-moe1-resume.ipynb
 ```
 
 ## Checkpoint Compatibility

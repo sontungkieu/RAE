@@ -452,7 +452,7 @@ Python protobuf runtime before importing TFDS to avoid the common Kaggle
 descriptor crash.
 
 If you want the VAE learned-source flow on the same dataset, start from
-[../vaes-jax-celebahq-kaggle.ipynb](../vaes-jax-celebahq-kaggle.ipynb). That
+[../vaes-jax-celebahq-kaggle-moe1.ipynb](../vaes-jax-celebahq-kaggle-moe1.ipynb). That
 notebook keeps the same `uv sync` and Hugging Face export-to-`ImageFolder`
 workflow, but switches Stage 1 to `stage1.StabilityVAE` and Stage 2 to
 single-tower `stage2.models.SiT.SiT`, then builds an offline diagonal GMM
@@ -480,7 +480,7 @@ Key properties of this VAE notebook flow:
   `eval.data_path` on `/kaggle/working/celebahq256_imgfolder/val`
 
 For Kaggle `TPU v5e-8`, use
-[../vaes-jax-celebahq-kaggle-tpuv5e8-sitb.ipynb](../vaes-jax-celebahq-kaggle-tpuv5e8-sitb.ipynb).
+[../vaes-jax-celebahq-kaggle-tpuv5e8-sitb-moe1.ipynb](../vaes-jax-celebahq-kaggle-tpuv5e8-sitb-moe1.ipynb).
 That notebook keeps the same TPU/JAX workarounds, writes the Stage 2 config as
 `CelebAHQ256_SiT-B_StabilityVAE_moe1_jax_tpuv5e8.yaml`, keeps
 `--data-path /kaggle/working/celebahq256_imgfolder`, and resumes the same
@@ -494,7 +494,7 @@ RMS/variance, and source metrics are available by default.
 
 If you already have an Orbax run directory for that VAE flow and want to
 continue training from its latest checkpoint, use
-[../vaes-jax-celebahq-kaggle-tpuv5e8-sitb-resume.ipynb](../vaes-jax-celebahq-kaggle-tpuv5e8-sitb-resume.ipynb).
+[../vaes-jax-celebahq-kaggle-tpuv5e8-sitb-moe1-resume.ipynb](../vaes-jax-celebahq-kaggle-tpuv5e8-sitb-moe1-resume.ipynb).
 That notebook mirrors the resume-only Kaggle TPU pattern used by the DH
 notebook, but searches for the newest
 `CelebAHQ256_SiT-B_StabilityVAE_moe1_jax_tpuv5e8-*` run directory instead.
