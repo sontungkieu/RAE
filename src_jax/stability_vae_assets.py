@@ -56,6 +56,21 @@ def _to_builtin_tree(node: Any) -> Any:
     return node
 
 
+def _rename_backend_vae_keys(node: Any) -> Any:
+    if not hasattr(node, "items"):
+        return node
+
+    renamed: dict[str, Any] = {}
+    for key, value in node.items():
+        target_key = key
+        if key == "downsamplers_0":
+            target_key = "downsample"
+        elif key == "upsamplers_0":
+            target_key = "upsample"
+        renamed[target_key] = _rename_backend_vae_keys(value)
+    return renamed
+
+
 def ensure_stability_vae_checkpoint(destination: str | Path) -> Path:
     output_path = Path(destination).expanduser().resolve()
     if output_path.exists():
@@ -83,7 +98,7 @@ def ensure_stability_vae_checkpoint(destination: str | Path) -> Path:
     finally:
         _restore_diffusers_verbosity(previous_diffusers_verbosity)
 
-    payload = _to_builtin_tree(params)
+    payload = _rename_backend_vae_keys(_to_builtin_tree(params))
     temp_path: Path | None = None
     try:
         with tempfile.NamedTemporaryFile(
