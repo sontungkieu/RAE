@@ -32,9 +32,9 @@ src_jax/
   sample_ddp.py
   stage1_sample.py
   push_hf.py
-vaes-jax-celebahq-kaggle.ipynb
-vaes-jax-celebahq-kaggle-tpuv5e8-sitb.ipynb
-vaes-jax-celebahq-kaggle-tpuv5e8-sitb-resume.ipynb
+vaes-jax-celeba-kaggle.ipynb
+vaes-jax-celeba-kaggle-tpuv5e8-sitb.ipynb
+vaes-jax-celeba-kaggle-tpuv5e8-sitb-resume.ipynb
 \end{lstlisting}
 
 \subsection{Stage 1: Representation Autoencoder và StabilityVAE}
@@ -68,7 +68,7 @@ Hành vi chính:
   \item mặc định tự materialize checkpoint \texttt{vae\_trial1.pkl} cục bộ từ
   \texttt{stabilityai/sd-vae-ft-mse}, trừ khi
   \texttt{stage\_1.params.pretrained\_path} đã trỏ tới pickle sẵn có;
-  \item không bắt buộc phải bootstrap latent stat trước khi chạy CelebA-HQ;
+  \item không bắt buộc phải bootstrap latent stat trước khi chạy CelebA;
   \item mặc định suy ra latent shape \texttt{[4, 32, 32]} ở độ phân giải
   \texttt{256x256}.
 \end{itemize}
@@ -86,7 +86,7 @@ File này giờ có hai alias repo-facing:
 \end{itemize}
 
 Nhờ đó nhánh hiện tại vẫn giữ được đường \texttt{SiTDH} ở mức code/config khi
-cần, đồng thời public notebook flow của CelebA-HQ tập trung vào
+cần, đồng thời public notebook flow của CelebA tập trung vào
 \texttt{StabilityVAE + SiT-B}. Objective trên đường JAX vẫn đi qua interface
 \texttt{sit} cho cả hai dạng backbone.
 
@@ -138,7 +138,7 @@ File & Vai trò \\
 \midrule
 \endhead
 \texttt{src\_jax/vendor.py} & Bootstrap \texttt{diffuse\_nnx} vào \texttt{\~{}/.cache/rae\_jax/diffuse\_nnx} và pin commit \\
-\texttt{src\_jax/config\_adapter.py} & Chuyển YAML OmegaConf của repo sang config backend NNX, map \texttt{SiT}/\texttt{SiTDH}/\texttt{StabilityVAE} sang backend phù hợp, forward \texttt{random\_flip} / prefetch knobs, và mặc định bật flip cho config train CelebA-HQ \\
+\texttt{src\_jax/config\_adapter.py} & Chuyển YAML OmegaConf của repo sang config backend NNX, map \texttt{SiT}/\texttt{SiTDH}/\texttt{StabilityVAE} sang backend phù hợp, forward \texttt{random\_flip} / prefetch knobs, và giữ interface train \texttt{sit} cho cả flow DH lẫn single-tower VAE \\
 \texttt{src\_jax/stage2\_runtime.py} & Train, sampling, load checkpoint PyTorch hoặc Orbax, JAX validation-loss integration, FID glue, wandb bridge \\
  \texttt{src\_jax/stage1\_runtime.py} & Load encoder Stage 1 JAX, reconstruction một ảnh, reconstruction cả thư mục và tích lũy latent stat cho cả \texttt{RAE} lẫn \texttt{StabilityVAE} \\
  \texttt{src\_jax/build\_stage1\_stats.py} & Tạo file \texttt{stat.pt} theo định dạng mean / var để dùng lại cho Stage 1 \\
@@ -183,7 +183,7 @@ không còn bắt đầu từ một EMA cold-start sai ngay từ step đầu.
 
 \subsection{Checkpoint và tương thích trọng số}
 
-Với branch \texttt{jax-vae-sit-celebahq256}, checkpoint Stage 2 phải khớp shape
+Với branch \texttt{jax-vae-sit}, checkpoint Stage 2 phải khớp shape
 của backbone đã chọn:
 
 \begin{itemize}[leftmargin=1.5em]

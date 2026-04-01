@@ -11,13 +11,13 @@ Representation Autoencoders (RAE):
    sampled latents back into images through the Stage 1 decoder.
 
 The XLA branch focuses on TPU execution for Stage 2 training and sampling, with
-optional host-side FID scoring. The current `jax-vae-sit-celebahq256` branch
+optional host-side FID scoring. The current `jax-vae-sit` branch
 also adds a thin JAX/NNX compatibility layer under `src_jax/` that maps the
 repository's existing YAML schema into a pinned `diffuse_nnx` backend,
 including backend-native FID reference building, held-out validation loss, a
 compatibility patch that keeps backend EMA initialization aligned with the live
 model weights, and the public backend-native `StabilityVAE + SiT-B`
-CelebA-HQ flow.
+CelebA flow.
 
 ## End-to-End Data Flow
 
@@ -145,12 +145,12 @@ the TPU loop.
 - [src_jax/build_stage1_stats.py](../src_jax/build_stage1_stats.py):
   compute dataset-specific Stage 1 latent normalization stats
 - [src_jax/export_celebahq_hf.py](../src_jax/export_celebahq_hf.py):
-  export the Hugging Face dataset `eurecom-ds/celeba-hq-256` into the `ImageFolder`
-  layout still expected by the current JAX training notebooks
+  optional utility to export the Hugging Face dataset
+  `eurecom-ds/celeba-hq-256` into the `ImageFolder` layout expected by the JAX
+  training notebooks
 - [src_jax/export_celebahq_tfds.py](../src_jax/export_celebahq_tfds.py):
-  export TFDS `celeb_a_hq/256` into the `ImageFolder` layout still expected by
-  the current JAX training notebooks, while forcing the Python protobuf runtime
-  before importing TFDS to avoid Kaggle descriptor crashes
+  optional TFDS `celeb_a_hq/256` export path that still forces the Python
+  protobuf runtime before importing TFDS to avoid Kaggle descriptor crashes
 
 ### FID Utilities
 
@@ -176,9 +176,8 @@ The JAX path is intentionally kept thin:
   by NNX, mapping `SiTDH` to `lightning_ddt`, mapping `SiT` to
   `lightning_dit`, mapping `stage1.StabilityVAE` to the backend-native
   `StabilityVAE` encoder, inferring latent geometry when only Stage 1 is
-  defined, forwarding `random_flip` plus prefetch knobs, defaulting CelebA-HQ
-  train configs to horizontal flips unless overridden, and keeping the `sit`
-  training interface
+  defined, forwarding `random_flip` plus prefetch knobs, and keeping the `sit`
+  training interface used by both the DH and single-tower VAE flows
 - [src_jax/stage2_runtime.py](../src_jax/stage2_runtime.py):
   training, checkpoint loading, sampling, guidance wiring, JAX validation-loss
   integration, and FID glue for both EMA and optional online-model diagnostics
@@ -186,11 +185,10 @@ The JAX path is intentionally kept thin:
   shared JAX Stage 1 encoder loading, single-image reconstruction, folder reconstruction, and latent-stat accumulation for both `stage1.RAE` and `stage1.StabilityVAE`
 - [src_jax/export_celebahq_hf.py](../src_jax/export_celebahq_hf.py):
   prepares the public Hugging Face CelebA-HQ source into a repo-compatible
-  `ImageFolder` tree for Kaggle and local JAX workflows without manual tar
-  files
+  `ImageFolder` tree when you explicitly need the HQ dataset path
 - [src_jax/export_celebahq_tfds.py](../src_jax/export_celebahq_tfds.py):
   prepares the manual TFDS CelebA-HQ source into a repo-compatible
-  `ImageFolder` tree for Kaggle and local JAX workflows
+  `ImageFolder` tree when you explicitly need the HQ dataset path
 - [src_jax/hf_utils.py](../src_jax/hf_utils.py): Hugging Face upload
   helpers for finished workdirs or checkpoint folders
 
@@ -276,9 +274,9 @@ src_jax/
   sample_ddp.py
   stage1_sample.py
   push_hf.py
-vaes-jax-celebahq-kaggle.ipynb
-vaes-jax-celebahq-kaggle-tpuv5e8-sitb.ipynb
-vaes-jax-celebahq-kaggle-tpuv5e8-sitb-resume.ipynb
+vaes-jax-celeba-kaggle.ipynb
+vaes-jax-celeba-kaggle-tpuv5e8-sitb.ipynb
+vaes-jax-celeba-kaggle-tpuv5e8-sitb-resume.ipynb
 ```
 
 ## Checkpoint Compatibility

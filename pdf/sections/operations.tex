@@ -115,24 +115,29 @@ python3 src_jax/train.py \
   \texttt{src\_jax/build\_stage1\_stats.py} và \texttt{src\_jax/reconstruct\_folder.py}.
   Các lệnh này có thể dùng YAML chỉ có \texttt{stage\_1}, không cần
   \texttt{stage\_2.target}.
-  \item Nếu chạy trên Kaggle với CelebA-HQ, bắt đầu từ notebook
-  \texttt{vaes-jax-celebahq-kaggle.ipynb}. Bản này vẫn dùng
-  \texttt{src\_jax/export\_celebahq\_hf.py}, nhưng đổi Stage 1 sang
-  \texttt{stage1.StabilityVAE}, đổi Stage 2 sang single-tower
-  \texttt{SiT-B}, và bỏ hẳn bước bootstrap identity stat cùng pass
-  \texttt{build\_stage1\_stats.py} bắt buộc.
+  \item Nếu chạy trên Kaggle với CelebA, bắt đầu từ notebook
+  \texttt{vaes-jax-celeba-kaggle.ipynb}. Bản này dựng
+  \texttt{celeba256\_imgfolder} từ dataset Kaggle giống branch
+  \texttt{jax-sit-dh}, nhưng đổi Stage 1 sang \texttt{stage1.StabilityVAE},
+  đổi Stage 2 sang single-tower \texttt{SiT-B}, và bỏ hẳn bước bootstrap
+  identity stat cùng pass \texttt{build\_stage1\_stats.py} bắt buộc.
   \item Nếu phần cứng là Kaggle \texttt{TPU v5e-8} và cần flow VAE đó trên TPU,
-  dùng \texttt{vaes-jax-celebahq-kaggle-tpuv5e8-sitb.ipynb}. Notebook này giữ
+  dùng \texttt{vaes-jax-celeba-kaggle-tpuv5e8-sitb.ipynb}. Notebook này giữ
   toàn bộ fix Kaggle/JAX hiện có, bật \texttt{training.random\_flip=true},
   viết config Stage 2 thành
-  \texttt{CelebAHQ256\_SiT-B\_StabilityVAE\_jax\_tpuv5e8.yaml}, và dùng shape
-  single-tower \texttt{hidden\_size=768}, \texttt{depth=12},
+  \texttt{CelebA256\_SiT-B\_StabilityVAE\_jax\_tpuv5e8.yaml}, bật luôn
+  \texttt{training.log\_rae\_latent\_stats=true} và
+  \texttt{training.log\_activation\_stats=true}, mặc định
+  \texttt{num\_workers=16} và \texttt{prefetch\_factor=4} cho cả train/eval,
+  rồi dùng shape single-tower \texttt{hidden\_size=768}, \texttt{depth=12},
   \texttt{num\_heads=12}.
   \item Nếu đã có run Orbax của flow \texttt{StabilityVAE + SiT-B} và cần
   resume, dùng notebook
-  \texttt{vaes-jax-celebahq-kaggle-tpuv5e8-sitb-resume.ipynb}. Notebook này
+  \texttt{vaes-jax-celeba-kaggle-tpuv5e8-sitb-resume.ipynb}. Notebook này
   dùng cùng pattern resume-only của bản DH, nhưng tự tìm thư mục
-  \texttt{CelebAHQ256\_SiT-B\_StabilityVAE\_jax\_tpuv5e8-*} mới nhất.
+  \texttt{CelebA256\_SiT-B\_StabilityVAE\_jax\_tpuv5e8-*} mới nhất và ép lại
+  cả cấu hình \texttt{num\_workers=16}, \texttt{prefetch\_factor=4}, và hai
+  cờ log diagnostics khi resume.
   \item Nếu cần huấn luyện Stage 1 kiểu GAN đầy đủ, hiện vẫn phải xem đây là
   phần chưa được JAX hóa trong branch này.
 \end{itemize}

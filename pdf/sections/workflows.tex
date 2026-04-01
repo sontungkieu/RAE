@@ -280,33 +280,32 @@ python3 src_jax/train.py \
   --hf-repo-id <hf_user_or_org>/<repo_name>
 \end{lstlisting}
 
-\subsection{Notebook Kaggle cho CelebA-HQ}
+\subsection{Notebook Kaggle cho CelebA}
 
-Nhánh này giữ một public notebook flow cho CelebA-HQ:
+Nhánh này giữ một public notebook flow cho CelebA:
 
 \begin{itemize}[leftmargin=1.5em]
   \item \texttt{StabilityVAE + SiT-B}: baseline single-tower của nhánh hiện tại.
 \end{itemize}
 
-Script mặc định đứng sau bước export là \texttt{src\_jax/export\_celebahq\_hf.py}.
-Đường train JAX hiện tại vẫn tiêu thụ \texttt{ImageFolder}, nên notebook chỉ
-dùng Hugging Face để tải \texttt{eurecom-ds/celeba-hq-256} vào cache cục bộ rồi
-materialize dữ liệu đầu vào tại chỗ. Nếu vẫn muốn đi theo route TFDS cũ, repo
-giữ lại \texttt{src\_jax/export\_celebahq\_tfds.py}; script đó vẫn cần các tar
-file manual chính thức và vẫn ép
-\texttt{PROTOCOL\_BUFFERS\_PYTHON\_IMPLEMENTATION=python} trước khi import TFDS
-để tránh lỗi Kaggle kiểu ``Descriptors cannot be created directly'' khi
-protobuf trong môi trường không đồng nhất.
+Giống branch \texttt{jax-sit-dh}, public notebook flow bắt đầu từ dataset Kaggle
+\texttt{jessicali9530/celeba-dataset}, center crop rồi resize ảnh về
+\texttt{256x256}, sau đó materialize dữ liệu thành cây \texttt{ImageFolder}
+\texttt{celeba256\_imgfolder}. Nếu vẫn muốn đi theo route CelebA-HQ cũ, repo
+giữ lại \texttt{src\_jax/export\_celebahq\_hf.py} và
+\texttt{src\_jax/export\_celebahq\_tfds.py}, nhưng đó không còn là public flow
+mặc định của branch này.
 
 Nếu muốn dùng baseline VAE mới, bắt đầu từ notebook
-\texttt{vaes-jax-celebahq-kaggle.ipynb}. Notebook này giữ nguyên flow
-\texttt{uv sync} và export Hugging Face sang \texttt{ImageFolder}, nhưng đổi
-Stage 1 sang \texttt{stage1.StabilityVAE} và Stage 2 sang single-tower
-\texttt{stage2.models.SiT.SiT}. Các config được sinh runtime là:
+\texttt{vaes-jax-celeba-kaggle.ipynb}. Notebook này giữ nguyên flow
+\texttt{uv sync} và dựng \texttt{ImageFolder} từ CelebA như branch
+\texttt{jax-sit-dh}, nhưng đổi Stage 1 sang \texttt{stage1.StabilityVAE} và
+Stage 2 sang single-tower \texttt{stage2.models.SiT.SiT}. Các config được sinh
+runtime là:
 
 \begin{itemize}[leftmargin=1.5em]
-  \item \texttt{configs/stage1/pretrained/CelebAHQ256\_StabilityVAE\_jax.yaml};
-  \item \texttt{configs/stage2/training/CelebAHQ256\_SiT-B\_StabilityVAE\_jax.yaml}.
+  \item \texttt{configs/stage1/pretrained/CelebA256\_StabilityVAE\_jax.yaml};
+  \item \texttt{configs/stage2/training/CelebA256\_SiT-B\_StabilityVAE\_jax.yaml}.
 \end{itemize}
 
 Khác với flow RAE:
@@ -316,22 +315,32 @@ Khác với flow RAE:
   \item không cần bootstrap identity stat;
   \item không bắt buộc phải chạy \texttt{src\_jax/build\_stage1\_stats.py}
   trước khi train Stage 2;
-  \item bật \texttt{training.random\_flip=true} trong config Stage 2 sinh ra;
-  \item cell train cuối truyền \texttt{--data-path /kaggle/working/celebahq256\_imgfolder},
-  còn \texttt{eval.data\_path} trong config sinh ra vẫn trỏ tới split
-  \texttt{val}.
+  \item bật \texttt{training.random\_flip=true},
+  \texttt{training.log\_rae\_latent\_stats=true}, và
+  \texttt{training.log\_activation\_stats=true} trong config Stage 2 sinh ra;
+  \item cell train cuối truyền
+  \texttt{--data-path /kaggle/working/celeba256\_imgfolder/train}, còn
+  \texttt{eval.data\_path} trong config sinh ra vẫn trỏ tới split
+  \texttt{/kaggle/working/celeba256\_imgfolder/val}.
 \end{itemize}
 
 Nếu chạy trên Kaggle \texttt{TPU v5e-8}, dùng notebook
-\texttt{vaes-jax-celebahq-kaggle-tpuv5e8-sitb.ipynb}. Bản này ghi config Stage
-2 thành \texttt{CelebAHQ256\_SiT-B\_StabilityVAE\_jax\_tpuv5e8.yaml}, dùng
+\texttt{vaes-jax-celeba-kaggle-tpuv5e8-sitb.ipynb}. Bản này ghi config Stage
+2 thành \texttt{CelebA256\_SiT-B\_StabilityVAE\_jax\_tpuv5e8.yaml}, dùng
 shape kiểu DiT-B là \texttt{hidden\_size=768}, \texttt{depth=12},
 \texttt{num\_heads=12}, \texttt{patch\_size=2}, và vẫn giữ objective
-\texttt{sit} / flow matching của repo này. Notebook TPU cũng đặt
-\texttt{training.prefetch\_factor=8} và \texttt{eval.prefetch\_factor=4} để
-host queue batch sâu hơn.
+\texttt{sit} / flow matching của repo này. Notebook TPU cũng mặc định cả
+train lẫn eval ở \texttt{num\_workers=16} với
+\texttt{prefetch\_factor=4}, đồng thời giữ latent RMS/variance, output
+RMS/variance, và activation RMS/variance bật sẵn.
 
 Nếu đã có run Orbax của flow VAE và cần train tiếp, dùng notebook
-\texttt{vaes-jax-celebahq-kaggle-tpuv5e8-sitb-resume.ipynb}. Notebook này bám
+\texttt{vaes-jax-celeba-kaggle-tpuv5e8-sitb-resume.ipynb}. Notebook này bám
 theo pattern resume-only của branch, nhưng tìm workdir mới nhất theo pattern
-\texttt{CelebAHQ256\_SiT-B\_StabilityVAE\_jax\_tpuv5e8-*}.
+\texttt{CelebA256\_SiT-B\_StabilityVAE\_jax\_tpuv5e8-*} và truyền lại
+\texttt{training.num\_workers=16},
+\texttt{training.prefetch\_factor=4},
+\texttt{eval.num\_workers=16},
+\texttt{eval.prefetch\_factor=4},
+\texttt{training.log\_rae\_latent\_stats=true}, và
+\texttt{training.log\_activation\_stats=true} khi resume.

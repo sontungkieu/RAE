@@ -119,7 +119,7 @@ python3 src_jax/build_stage1_stats.py \
 The bootstrap identity stats file can contain `mean=0` and `var=1`, which keeps
 the first stats pass unnormalized while still satisfying the backend RAE loader.
 That bootstrap pass is still relevant for the RAE path, but it is not a
-required prerequisite for the new `StabilityVAE` CelebA-HQ notebooks.
+required prerequisite for the new `StabilityVAE` CelebA notebooks.
 
 ## `stage_2`
 
@@ -157,7 +157,7 @@ Common fields:
 - `params.depth`: encoder and decoder block counts
 - `params.num_heads`: encoder and decoder attention head counts
 - `params.class_dropout_prob`: classifier-free label dropout rate; for the
-  single-class CelebA-HQ JAX notebooks this is set to `0.0`
+  single-class CelebA JAX notebooks this is set to `0.0`
 - feature toggles such as `use_rope`, `use_rmsnorm`, `use_swiglu`, and
   `use_pos_embed`
 
@@ -332,8 +332,8 @@ Notes:
   JAX Stage 2 path when `num_workers > 0`; increasing it can hide host I/O
   latency spikes without changing model compute
 - `random_flip` controls whether the raw-image JAX Stage 2 transform inserts a
-  `RandomHorizontalFlip()` before Stage 1 encoding; CelebA-HQ configs on this
-  branch default it to `true` for training unless you override it
+  `RandomHorizontalFlip()` before Stage 1 encoding; the public CelebA notebooks
+  on this branch explicitly set it to `true` for training
 - `log_rae_latent_stats: true` makes the JAX path log RMS and variance of the
   Stage 1 latents actually fed into Stage 2 as `train_rae_latent_rms` and
   `train_rae_latent_var`; the metric name is kept for backward compatibility
@@ -353,6 +353,10 @@ The JAX adapter also accepts CLI overrides in the form:
 python3 src_jax/train.py \
   --config <config> \
   --set training.global_batch_size=256 \
+  --set training.num_workers=16 \
+  --set training.prefetch_factor=4 \
+  --set eval.num_workers=16 \
+  --set eval.prefetch_factor=4 \
   --set training.log_rae_latent_stats=true \
   --set training.log_activation_stats=true \
   --set guidance.scale=1.5
@@ -387,7 +391,7 @@ Meaning:
 - `prefetch_factor`: per-worker prefetch depth for the host-side eval loader on
   the JAX path; only applies when `num_workers > 0`
 - `random_flip`: whether to keep horizontal flips on the raw-image eval path;
-  the CelebA-HQ notebooks leave this disabled for validation and FID
+  the CelebA notebooks leave this disabled for validation and FID
 - `max_batches`: optional per-rank cap
 - `eval_model`: score the non-EMA model in addition to EMA
 
