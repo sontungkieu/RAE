@@ -45,9 +45,9 @@ class SiTGMMMoe1Interface(SiTInterface):
         self.source_cfg = dict(source)
         self.num_modes = int(self.source_cfg["num_modes"])
         self.posterior_eps = float(self.source_cfg.get("posterior_eps", 1e-6))
-        self.balance_loss_weight = float(self.source_cfg.get("balance_loss_weight", 1e-2))
-        self.entropy_loss_weight = float(self.source_cfg.get("entropy_loss_weight", 0.0))
-        self.var_kl_loss_weight = float(self.source_cfg.get("var_kl_loss_weight", 1e-2))
+        self.balance_loss_weight = float(self.source_cfg.get("balance_loss_weight", 0.1))
+        self.entropy_loss_weight = float(self.source_cfg.get("entropy_loss_weight", 0.01))
+        self.var_kl_loss_weight = float(self.source_cfg.get("var_kl_loss_weight", 1.0))
         self.target_variance = float(self.source_cfg.get("target_variance", 1.0))
         self.source_seed = int(self.source_cfg.get("source_seed", 17))
 
@@ -72,9 +72,9 @@ class SiTGMMMoe1Interface(SiTInterface):
         self.source_moe = SourceMoE(
             num_modes=self.num_modes,
             in_channels=int(network.in_channels),
-            condition_dim=int(self.source_cfg.get("condition_dim", 64)),
-            hidden_channels=int(self.source_cfg.get("hidden_channels", 128)),
-            router_temperature=float(self.source_cfg.get("router_temperature", 1.0)),
+            condition_dim=int(self.source_cfg.get("condition_dim", 16)),
+            hidden_channels=int(self.source_cfg.get("hidden_channels", 64)),
+            router_temperature=float(self.source_cfg.get("router_temperature", 2.0)),
             soft_moe=bool(self.source_cfg.get("soft_moe", True)),
             logvar_min=float(self.source_cfg.get("logvar_min", -8.0)),
             logvar_max=float(self.source_cfg.get("logvar_max", 4.0)),
@@ -166,7 +166,7 @@ class SiTGMMMoe1Interface(SiTInterface):
         total_loss = (
             loss_fm
             + self.balance_loss_weight * loss_balance
-            + self.entropy_loss_weight * loss_entropy
+            - self.entropy_loss_weight * loss_entropy
             + self.var_kl_loss_weight * loss_var
         )
 

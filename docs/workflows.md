@@ -242,6 +242,12 @@ If you enable `source.enabled: true`, the same JAX loop also logs
 `train_source_logvar_mean` and `train_source_var_mean` so you can see when the
 learned source variance drifts away from the target.
 
+The current VAE `moe1` defaults are aligned with the public
+`shortcut-models@moe1` branch for the source-side recipe:
+`condition_dim=16`, `hidden_channels=64`, `router_temperature=2.0`,
+`balance_loss_weight=0.1`, `entropy_loss_weight=1.0e-2`, and
+`var_kl_loss_weight=1.0`.
+
 Only the master rank initializes and logs to wandb.
 
 ## 6. Validation Loss During Training

@@ -324,8 +324,11 @@ Khác với flow RAE:
   \texttt{training.log\_activation\_stats=true} trong config Stage 2 sinh ra;
   \item preview sample, sampling CLI, và online FID khởi tạo từ learned source prior thay vì pure Gaussian latent;
   \item block \texttt{source} sinh ra mặc định dùng
-  \texttt{entropy\_loss\_weight=0.0} và
-  \texttt{var\_kl\_loss\_weight=1.0e-2};
+  \texttt{condition\_dim=16}, \texttt{hidden\_channels=64},
+  \texttt{router\_temperature=2.0}, \texttt{balance\_loss\_weight=0.1},
+  \texttt{entropy\_loss\_weight=1.0e-2}, và
+  \texttt{var\_kl\_loss\_weight=1.0} để bám sát hơn recipe public của
+  \texttt{shortcut-models@moe1};
   \item cell train cuối truyền \texttt{--data-path /kaggle/working/celebahq256\_imgfolder},
   còn \texttt{eval.data\_path} trong config sinh ra vẫn trỏ tới split
   \texttt{val}.

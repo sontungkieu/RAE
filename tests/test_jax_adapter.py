@@ -181,8 +181,8 @@ source:
             self.assertEqual(backend_cfg["interface"]["source"]["num_modes"], 4)
             self.assertEqual(backend_cfg["interface"]["source"]["condition_dim"], 32)
             self.assertEqual(backend_cfg["interface"]["source"]["hidden_channels"], 96)
-            self.assertEqual(backend_cfg["interface"]["source"]["entropy_loss_weight"], 0.0)
-            self.assertEqual(backend_cfg["interface"]["source"]["var_kl_loss_weight"], 1e-2)
+            self.assertEqual(backend_cfg["interface"]["source"]["entropy_loss_weight"], 0.01)
+            self.assertEqual(backend_cfg["interface"]["source"]["var_kl_loss_weight"], 1.0)
 
     def test_npz_fid_reference_is_converted_to_pickle(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir:
