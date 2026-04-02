@@ -46,8 +46,8 @@ class SiTGMMMoe1Interface(SiTInterface):
         self.num_modes = int(self.source_cfg["num_modes"])
         self.posterior_eps = float(self.source_cfg.get("posterior_eps", 1e-6))
         self.balance_loss_weight = float(self.source_cfg.get("balance_loss_weight", 1e-2))
-        self.entropy_loss_weight = float(self.source_cfg.get("entropy_loss_weight", 1e-3))
-        self.var_kl_loss_weight = float(self.source_cfg.get("var_kl_loss_weight", 1e-3))
+        self.entropy_loss_weight = float(self.source_cfg.get("entropy_loss_weight", 0.0))
+        self.var_kl_loss_weight = float(self.source_cfg.get("var_kl_loss_weight", 1e-2))
         self.target_variance = float(self.source_cfg.get("target_variance", 1.0))
         self.source_seed = int(self.source_cfg.get("source_seed", 17))
 
@@ -123,6 +123,8 @@ class SiTGMMMoe1Interface(SiTInterface):
         source_metrics = summarize_router(moe_out.alpha)
         source_metrics["source_condition_max"] = jnp.mean(jnp.max(condition_weights, axis=-1))
         source_metrics["source_condition_entropy"] = entropy_loss(condition_weights)
+        source_metrics["source_logvar_mean"] = jnp.mean(moe_out.logvar)
+        source_metrics["source_var_mean"] = jnp.mean(jnp.exp(moe_out.logvar))
         return source, {
             "alpha": moe_out.alpha,
             "logits": moe_out.logits,
@@ -164,7 +166,7 @@ class SiTGMMMoe1Interface(SiTInterface):
         total_loss = (
             loss_fm
             + self.balance_loss_weight * loss_balance
-            - self.entropy_loss_weight * loss_entropy
+            + self.entropy_loss_weight * loss_entropy
             + self.var_kl_loss_weight * loss_var
         )
 
@@ -190,6 +192,8 @@ class SiTGMMMoe1Interface(SiTInterface):
             "source_condition_max": aux_metrics["source_condition_max"],
             "source_condition_entropy": aux_metrics["source_condition_entropy"],
             "source_prior_max": aux_metrics["source_prior_max"],
+            "source_logvar_mean": aux_metrics["source_logvar_mean"],
+            "source_var_mean": aux_metrics["source_var_mean"],
         }
 
         if return_aux:

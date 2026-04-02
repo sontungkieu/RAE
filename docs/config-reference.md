@@ -214,8 +214,8 @@ source:
   router_temperature: 1.0
   soft_moe: true
   balance_loss_weight: 1.0e-2
-  entropy_loss_weight: 1.0e-3
-  var_kl_loss_weight: 1.0e-3
+  entropy_loss_weight: 0.0
+  var_kl_loss_weight: 1.0e-2
   target_variance: 1.0
   logvar_min: -8.0
   logvar_max: 4.0
@@ -239,7 +239,10 @@ Meaning:
 - `router_temperature`: router softmax temperature
 - `soft_moe`: keep the router mixture soft instead of straight-through hard
 - `balance_loss_weight`, `entropy_loss_weight`, `var_kl_loss_weight`: weights
-  for the source-side auxiliary losses
+  for the source-side auxiliary losses; this branch now defaults
+  `entropy_loss_weight` to `0.0` so new runs do not maximize router entropy by
+  accident, while `var_kl_loss_weight` defaults to `1.0e-2` to keep learned
+  source variance closer to the target
 - `target_variance`, `logvar_min`, `logvar_max`, `var_floor`: variance control
   for the learned source
 - `posterior_eps`: epsilon for posterior numerics

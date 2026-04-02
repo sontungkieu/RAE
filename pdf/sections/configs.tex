@@ -144,8 +144,8 @@ source:
   router_temperature: 1.0
   soft_moe: true
   balance_loss_weight: 1.0e-2
-  entropy_loss_weight: 1.0e-3
-  var_kl_loss_weight: 1.0e-3
+  entropy_loss_weight: 0.0
+  var_kl_loss_weight: 1.0e-2
   target_variance: 1.0
   logvar_min: -8.0
   logvar_max: 4.0
@@ -167,7 +167,10 @@ source:
   \item \texttt{condition\_dim}, \texttt{hidden\_channels}: độ rộng của
   \texttt{SourceMoE};
   \item \texttt{balance\_loss\_weight}, \texttt{entropy\_loss\_weight},
-  \texttt{var\_kl\_loss\_weight}: trọng số auxiliary losses phía source;
+  \texttt{var\_kl\_loss\_weight}: trọng số auxiliary losses phía source. Mặc
+  định branch này để \texttt{entropy\_loss\_weight=0.0} để không vô tình đẩy
+  router về uniform, còn \texttt{var\_kl\_loss\_weight=1.0e-2} để khóa
+  variance của source sát mục tiêu hơn;
   \item \texttt{logvar\_min}, \texttt{logvar\_max}, \texttt{var\_floor}: chặn
   variance của source học được;
   \item các knob \texttt{em\_*} và \texttt{dead\_count\_threshold}: điều khiển

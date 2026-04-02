@@ -238,7 +238,9 @@ per encoder/decoder block such as `train_sitdh_act_enc_00_rms` and
 If you enable `source.enabled: true`, the same JAX loop also logs
 `train_loss_fm`, `train_loss_balance`, `train_loss_entropy`, `train_loss_var`,
 `train_source_router_entropy`, `train_source_router_max`, and
-`train_source_active_modes`.
+`train_source_active_modes`. The `moe1` path additionally logs
+`train_source_logvar_mean` and `train_source_var_mean` so you can see when the
+learned source variance drifts away from the target.
 
 Only the master rank initializes and logs to wandb.
 

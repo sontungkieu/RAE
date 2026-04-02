@@ -323,6 +323,9 @@ Khác với flow RAE:
   \item bật luôn \texttt{training.log\_rae\_latent\_stats=true} và
   \texttt{training.log\_activation\_stats=true} trong config Stage 2 sinh ra;
   \item preview sample, sampling CLI, và online FID khởi tạo từ learned source prior thay vì pure Gaussian latent;
+  \item block \texttt{source} sinh ra mặc định dùng
+  \texttt{entropy\_loss\_weight=0.0} và
+  \texttt{var\_kl\_loss\_weight=1.0e-2};
   \item cell train cuối truyền \texttt{--data-path /kaggle/working/celebahq256\_imgfolder},
   còn \texttt{eval.data\_path} trong config sinh ra vẫn trỏ tới split
   \texttt{val}.
@@ -338,7 +341,9 @@ shape kiểu DiT-B là \texttt{hidden\_size=768}, \texttt{depth=12},
 host queue batch sâu hơn. Cả hai notebook VAE public cũng ghi config Stage 2
 với \texttt{training.log\_rae\_latent\_stats=true} và
 \texttt{training.log\_activation\_stats=true} ngay từ đầu để có latent
-diagnostics của VAE, RMS/variance cho activation của SiT, và source metrics theo mặc định.
+diagnostics của VAE, RMS/variance cho activation của SiT, source metrics theo
+mặc định, cùng \texttt{source\_logvar\_mean/source\_var\_mean} để theo dõi độ
+ổn định variance của learned source.
 Cell train/resume của chúng cũng export \texttt{RAE\_JAX\_REBUILD\_BACKEND=1}
 để session Kaggle luôn refresh cached backend overlay trước khi train với
 \texttt{sit\_gmm\_moe1}.
