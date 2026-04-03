@@ -331,7 +331,12 @@ Stage 1 và Stage 2 ở TPU, đồng thời build \texttt{fid\_ref} bằng đún
 backend dùng cho online FID, build thêm
 \texttt{celebahq256\_source\_gmm.npz}, và giữ cadence checkpoint mặc định ở mốc
 \texttt{210000} step. Config train CelebA-HQ của notebook này cũng bật
-\texttt{training.random\_flip=true}.
+\texttt{training.random\_flip=true}. Block \texttt{source} sinh ra dùng
+\texttt{condition\_dim=16}, \texttt{hidden\_channels=256},
+\texttt{router\_temperature=2.0}, \texttt{balance\_loss\_weight=0.1},
+\texttt{entropy\_loss\_weight=1.0e-2}, và
+\texttt{var\_kl\_loss\_weight=1.0}; riêng cell build FID stats vẫn giữ
+\texttt{src\_jax/build\_fid\_stats.py --num-workers 32}.
 
 Nếu muốn giữ nguyên flow đó nhưng đổi Stage 2 sang biến thể DH
 \texttt{SiTDH-B + moe1},
@@ -343,7 +348,12 @@ này ghi config CelebA-HQ thành
 bằng \texttt{class\_dropout\_prob=0.0}, bật
 \texttt{training.random\_flip=true}, đặt tên run/project mặc định theo biến thể
 \texttt{SiTDH-B}, build artifact GMM trước train, và giữ cùng cadence
-checkpoint \texttt{210000} step.
+checkpoint \texttt{210000} step. Block \texttt{source} của notebook này cũng
+dùng \texttt{condition\_dim=16}, \texttt{hidden\_channels=256},
+\texttt{router\_temperature=2.0}, \texttt{balance\_loss\_weight=0.1},
+\texttt{entropy\_loss\_weight=1.0e-2}, và
+\texttt{var\_kl\_loss\_weight=1.0}; cell build FID stats vẫn giữ
+\texttt{--num-workers 32}.
 
 Nếu đã có thư mục run Orbax của \texttt{SiTDH-B + moe1} và cần train tiếp, dùng
 notebook \texttt{raes-jax-celebahq-kaggle-tpuv5e8-sitdh-b-moe1-resume.ipynb}. Notebook

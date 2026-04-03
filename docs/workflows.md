@@ -234,6 +234,11 @@ If you enable `training.log_activation_stats: true`, it additionally logs
 `train_sitdh_output_rms`, `train_sitdh_output_var`, and one RMS/variance pair
 per encoder/decoder block such as `train_sitdh_act_enc_00_rms` and
 `train_sitdh_act_dec_01_var`.
+If you enable `source.enabled: true`, the same JAX loop also logs
+`train_loss_fm`, `train_loss_balance`, `train_loss_entropy`, `train_loss_var`,
+`train_source_router_entropy`, `train_source_router_max`,
+`train_source_active_modes`, `train_source_logvar_mean`, and
+`train_source_var_mean`.
 
 Only the master rank initializes and logs to wandb.
 
@@ -477,7 +482,11 @@ repo dependencies into `/tmp/.venv`, clears the `jaxlib` executable-stack flag
 that Kaggle can reject before each JAX import, runs the TPU device check in a
 fresh Python process, keeps Stage 1 and Stage 2 on TPU, builds the JAX
 `fid_ref`, builds `celebahq256_source_gmm.npz`, and keeps the default
-checkpoint cadence at `210000` steps.
+checkpoint cadence at `210000` steps. Its generated source block uses
+`condition_dim=16`, `hidden_channels=256`, `router_temperature=2.0`,
+`balance_loss_weight=0.1`, `entropy_loss_weight=1.0e-2`, and
+`var_kl_loss_weight=1.0`, while the FID build cell intentionally keeps
+`src_jax/build_fid_stats.py --num-workers 32`.
 
 If you want the same Kaggle TPU flow but with the `SiTDH-B + moe1` DH Stage 2
 setup, use
@@ -487,7 +496,11 @@ CelebA-HQ Stage 2 config as `CelebAHQ256_SiTDH-B_DINOv2-B_moe1_jax_tpuv5e8.yaml`
 using the DH two-tower layout `hidden_size=[768, 2048]`, `depth=[12, 2]`,
 `num_heads=[12, 16]`, enabling `use_pos_embed`, disabling label dropout with
 `class_dropout_prob=0.0`, inserting the offline GMM build before training, and
-keeping the same `210000`-step checkpoint cadence.
+keeping the same `210000`-step checkpoint cadence. Its source block now matches
+the newer recipe with `condition_dim=16`, `hidden_channels=256`,
+`router_temperature=2.0`, `balance_loss_weight=0.1`,
+`entropy_loss_weight=1.0e-2`, and `var_kl_loss_weight=1.0`, while the FID
+build cell still keeps `--num-workers 32`.
 
 If you already have an Orbax run directory for `SiTDH-B + moe1` and want to
 continue training from its latest checkpoint, use

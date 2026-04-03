@@ -45,9 +45,9 @@ class SiTGMMMoe1Interface(SiTInterface):
         self.source_cfg = dict(source)
         self.num_modes = int(self.source_cfg["num_modes"])
         self.posterior_eps = float(self.source_cfg.get("posterior_eps", 1e-6))
-        self.balance_loss_weight = float(self.source_cfg.get("balance_loss_weight", 1e-2))
-        self.entropy_loss_weight = float(self.source_cfg.get("entropy_loss_weight", 1e-3))
-        self.var_kl_loss_weight = float(self.source_cfg.get("var_kl_loss_weight", 1e-3))
+        self.balance_loss_weight = float(self.source_cfg.get("balance_loss_weight", 0.1))
+        self.entropy_loss_weight = float(self.source_cfg.get("entropy_loss_weight", 0.01))
+        self.var_kl_loss_weight = float(self.source_cfg.get("var_kl_loss_weight", 1.0))
         self.target_variance = float(self.source_cfg.get("target_variance", 1.0))
         self.source_seed = int(self.source_cfg.get("source_seed", 17))
 
@@ -69,12 +69,13 @@ class SiTGMMMoe1Interface(SiTInterface):
             noise=self.source_seed + 1,
             mode=self.source_seed + 2,
         )
+        default_hidden_channels = max(128, min(512, int(network.in_channels) // 3))
         self.source_moe = SourceMoE(
             num_modes=self.num_modes,
             in_channels=int(network.in_channels),
-            condition_dim=int(self.source_cfg.get("condition_dim", 64)),
-            hidden_channels=int(self.source_cfg.get("hidden_channels", 128)),
-            router_temperature=float(self.source_cfg.get("router_temperature", 1.0)),
+            condition_dim=int(self.source_cfg.get("condition_dim", 16)),
+            hidden_channels=int(self.source_cfg.get("hidden_channels", default_hidden_channels)),
+            router_temperature=float(self.source_cfg.get("router_temperature", 2.0)),
             soft_moe=bool(self.source_cfg.get("soft_moe", True)),
             logvar_min=float(self.source_cfg.get("logvar_min", -8.0)),
             logvar_max=float(self.source_cfg.get("logvar_max", 4.0)),
@@ -82,16 +83,27 @@ class SiTGMMMoe1Interface(SiTInterface):
             rngs=self.source_rngs,
         )
 
+    def _gmm_arrays(self) -> tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray, jnp.ndarray, jnp.ndarray]:
+        # Read fixed GMM stats through `.value` so JAX sees plain arrays under jit/pjit.
+        return (
+            self.gmm_log_pi.value,
+            self.gmm_mu.value,
+            self.gmm_var.value,
+            self.gmm_latent_mean.value,
+            self.gmm_latent_std.value,
+        )
+
     def _posterior(self, x_data: jnp.ndarray) -> jnp.ndarray:
+        gmm_log_pi, gmm_mu, gmm_var, gmm_latent_mean, gmm_latent_std = self._gmm_arrays()
         x_flat = x_data.reshape((x_data.shape[0], -1))
         posterior = posterior_from_stats(
             x_flat,
-            latent_mean=self.gmm_latent_mean,
-            latent_std=self.gmm_latent_std,
+            latent_mean=gmm_latent_mean,
+            latent_std=gmm_latent_std,
             standardize_eps=self.gmm_standardize_eps,
-            log_pi=self.gmm_log_pi,
-            mu=self.gmm_mu,
-            var=self.gmm_var,
+            log_pi=gmm_log_pi,
+            mu=gmm_mu,
+            var=gmm_var,
         )
         return jax.lax.stop_gradient(posterior)
 
@@ -112,6 +124,8 @@ class SiTGMMMoe1Interface(SiTInterface):
         source_metrics = summarize_router(moe_out.alpha)
         source_metrics["source_condition_max"] = jnp.mean(jnp.max(condition_weights, axis=-1))
         source_metrics["source_condition_entropy"] = entropy_loss(condition_weights)
+        source_metrics["source_logvar_mean"] = jnp.mean(moe_out.logvar)
+        source_metrics["source_var_mean"] = jnp.mean(jnp.exp(moe_out.logvar))
         return source, {
             "alpha": moe_out.alpha,
             "logits": moe_out.logits,
@@ -120,7 +134,8 @@ class SiTGMMMoe1Interface(SiTInterface):
         }
 
     def sample_source_prior(self, shape: tuple[int, ...]) -> jnp.ndarray:
-        pi = jnp.broadcast_to(jnp.exp(self.gmm_log_pi)[None, :], (shape[0], self.num_modes))
+        gmm_log_pi, *_rest = self._gmm_arrays()
+        pi = jnp.broadcast_to(jnp.exp(gmm_log_pi)[None, :], (shape[0], self.num_modes))
         condition_weights = self._sample_modes(pi)
         source, _payload = self._sample_source_from_condition(condition_weights, shape)
         return source
@@ -163,7 +178,8 @@ class SiTGMMMoe1Interface(SiTInterface):
             "loss_fm": loss_fm,
         }
         aux_metrics.update(source_payload["metrics"])
-        aux_metrics["source_prior_max"] = jnp.max(jnp.exp(self.gmm_log_pi))
+        gmm_log_pi, *_rest = self._gmm_arrays()
+        aux_metrics["source_prior_max"] = jnp.max(jnp.exp(gmm_log_pi))
 
         loss_dict = {
             "loss": total_loss,
@@ -177,6 +193,8 @@ class SiTGMMMoe1Interface(SiTInterface):
             "source_condition_max": aux_metrics["source_condition_max"],
             "source_condition_entropy": aux_metrics["source_condition_entropy"],
             "source_prior_max": aux_metrics["source_prior_max"],
+            "source_logvar_mean": aux_metrics["source_logvar_mean"],
+            "source_var_mean": aux_metrics["source_var_mean"],
         }
 
         if return_aux:

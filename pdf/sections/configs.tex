@@ -161,13 +161,13 @@ source:
   kind: gmm_moe1
   gmm_stats_path: artifacts/celebahq256_source_gmm.npz
   num_modes: 4
-  condition_dim: 64
+  condition_dim: 16
   hidden_channels: 256
-  router_temperature: 1.0
+  router_temperature: 2.0
   soft_moe: true
-  balance_loss_weight: 1.0e-2
-  entropy_loss_weight: 1.0e-3
-  var_kl_loss_weight: 1.0e-3
+  balance_loss_weight: 0.1
+  entropy_loss_weight: 1.0e-2
+  var_kl_loss_weight: 1.0
   target_variance: 1.0
   logvar_min: -8.0
   logvar_max: 4.0
