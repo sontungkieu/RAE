@@ -568,6 +568,10 @@ python3 src_jax/build_fid_stats.py \
   --num-workers 8
 ```
 
+Trên host JAX như Kaggle TPU, nên giữ `--num-workers` ở mức vừa phải (`0-8`
+thường là đủ). Script JAX này dùng `spawn` khi `num_workers > 0`, nên tránh
+được cảnh báo `os.fork()` thường gặp với JAX đa luồng.
+
 From an existing `.npz` or `.npy` archive:
 
 ```bash
