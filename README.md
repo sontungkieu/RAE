@@ -442,6 +442,10 @@ python3 src_jax/build_fid_stats.py \
   --num-workers 8
 ```
 
+On JAX hosts such as Kaggle TPU, keep `--num-workers` modest (`0-8` is usually
+enough). The script now switches worker processes to the `spawn` start method
+when `num_workers > 0`, which avoids the usual JAX + `fork()` warning.
+
 The JAX adapter accepts either a backend-native `.pkl`/`.pickle` file from
 `src_jax/build_fid_stats.py` or an older `.npz` file. When given `.npz`, the
 adapter converts it to the backend pickle format on first use.

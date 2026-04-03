@@ -26,7 +26,12 @@ def main() -> None:
         help="Optional center-crop size before feature extraction. Leave unset to use the stored pixels as-is.",
     )
     parser.add_argument("--batch-size", type=int, default=64, help="Host batch size before local-device sharding.")
-    parser.add_argument("--num-workers", type=int, default=0, help="DataLoader workers for the image folder.")
+    parser.add_argument(
+        "--num-workers",
+        type=int,
+        default=0,
+        help="DataLoader workers for the image folder. When > 0, the JAX path uses spawn workers instead of fork.",
+    )
     args = parser.parse_args()
 
     mu, sigma, num_samples = calculate_backend_reference_stats(
