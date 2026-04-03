@@ -1,5 +1,6 @@
 from .gmm_utils import (
     GMMArtifact,
+    block_average_pool_nhwc,
     choose_gmm_feature_extractor,
     compute_active_modes,
     compute_standardization_stats,
@@ -8,6 +9,8 @@ from .gmm_utils import (
     flatten_latents_nhwc,
     load_gmm_artifact,
     posterior_from_stats,
+    project_channels_nhwc,
+    pyramid_16k_latents_nhwc,
     save_gmm_artifact,
     standardize_latents,
 )
@@ -22,6 +25,7 @@ __all__ = [
     "GMMArtifact",
     "SourceMoE",
     "balance_loss",
+    "block_average_pool_nhwc",
     "choose_gmm_feature_extractor",
     "compute_active_modes",
     "compute_standardization_stats",
@@ -31,6 +35,8 @@ __all__ = [
     "flatten_latents_nhwc",
     "load_gmm_artifact",
     "posterior_from_stats",
+    "project_channels_nhwc",
+    "pyramid_16k_latents_nhwc",
     "save_gmm_artifact",
     "standardize_latents",
     "summarize_router",

@@ -311,8 +311,9 @@ vẫn giữ \texttt{eval.data\_path} trên split \texttt{val}. Các notebook TPU
 \texttt{sit\_gmm\_moe1} trong session Kaggle mới. Script
 \texttt{src\_jax/build\_source\_gmm.py} trên branch này cũng mặc định dùng
 \texttt{feature\_extractor=auto}; với latent RAE \texttt{16 x 16 x 768}, nó sẽ
-chọn \texttt{spatial\_mean} thay vì flatten toàn bộ latent để fit GMM mà không
-đốt hết RAM host của Kaggle.
+chọn \texttt{pyramid\_16k}, tức pool/proj latent về \texttt{4 x 4 x 1024} rồi
+flatten thành \texttt{16384} chiều trước khi fit GMM. Nếu máy không đủ RAM thì
+mới ép xuống \texttt{spatial\_mean} làm fallback tiết kiệm bộ nhớ.
 
 Nếu chạy trên Kaggle \texttt{TPU v5e-8}, dùng notebook
 \texttt{raes-jax-celeba-kaggle-tpuv5e8-sitdh-s-moe1.ipynb}. Bản này cố định biến thể

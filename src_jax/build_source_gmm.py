@@ -54,11 +54,11 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--chunk-size", type=int, default=256)
     parser.add_argument(
         "--feature-extractor",
-        choices=["auto", "flatten", "spatial_mean"],
+        choices=["auto", "flatten", "spatial_mean", "pyramid_16k"],
         default="auto",
         help=(
             "How to convert NHWC latents into GMM features. "
-            "'auto' picks spatial_mean for very large RAE latents to avoid OOM."
+            "'auto' picks pyramid_16k for very large RAE latents; use spatial_mean only as a low-RAM fallback."
         ),
     )
     parser.add_argument("--set", dest="set_values", action="append", default=[], help="OmegaConf override.")

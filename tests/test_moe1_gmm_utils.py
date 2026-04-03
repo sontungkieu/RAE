@@ -44,10 +44,17 @@ class Moe1GmmUtilsTests(unittest.TestCase):
         self.assertEqual(pooled.shape, (2, 5))
         np.testing.assert_allclose(pooled[0], latents[0].mean(axis=(0, 1)))
 
-    def test_choose_gmm_feature_extractor_prefers_spatial_mean_for_large_rae_latents(self) -> None:
+    def test_extract_gmm_features_supports_pyramid_16k(self) -> None:
+        rng = np.random.default_rng(7)
+        latents = rng.normal(size=(2, 16, 16, 768)).astype(np.float32)
+        features = extract_gmm_features(latents, feature_extractor="pyramid_16k")
+        self.assertEqual(features.shape, (2, 16384))
+        self.assertTrue(np.isfinite(features).all())
+
+    def test_choose_gmm_feature_extractor_prefers_pyramid_16k_for_large_rae_latents(self) -> None:
         self.assertEqual(
             choose_gmm_feature_extractor((16, 16, 768), requested="auto"),
-            "spatial_mean",
+            "pyramid_16k",
         )
         self.assertEqual(
             choose_gmm_feature_extractor((32, 32, 4), requested="auto"),

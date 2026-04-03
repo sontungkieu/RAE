@@ -185,8 +185,9 @@ source:
   \item \texttt{gmm\_stats\_path} trỏ tới artifact \texttt{.npz} được build bởi
   \texttt{src\_jax/build\_source\_gmm.py}; script này cũng lưu luôn cách trích
   feature cho GMM. Trên branch DH, mode \texttt{auto} mặc định sẽ rơi về
-  \texttt{spatial\_mean} để tránh OOM khi latent RAE có shape
-  \texttt{16 x 16 x 768};
+  \texttt{pyramid\_16k}: latent RAE \texttt{16 x 16 x 768} được pool/proj về
+  \texttt{4 x 4 x 1024} rồi mới flatten thành \texttt{16384} chiều; chỉ dùng
+  \texttt{spatial\_mean} khi cần fallback tiết kiệm RAM;
   \item \texttt{num\_modes} là số component GMM đồng thời là số expert của MoE;
   \item \texttt{condition\_dim} là chiều embedding mode trước khi broadcast bias
   vào trunk CNN;

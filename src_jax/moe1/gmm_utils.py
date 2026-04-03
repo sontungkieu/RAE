@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import dataclasses
+from functools import lru_cache
 from pathlib import Path
 from typing import Any
 
@@ -76,6 +77,87 @@ def spatial_mean_latents_nhwc(latents: np.ndarray | jnp.ndarray) -> np.ndarray |
     return latents.mean(axis=(1, 2))
 
 
+def _is_jax_array(array: np.ndarray | jnp.ndarray) -> bool:
+    return type(array).__module__.startswith("jax") or hasattr(array, "__jax_array__")
+
+
+def _as_backend_array(
+    data: np.ndarray,
+    reference: np.ndarray | jnp.ndarray,
+) -> np.ndarray | jnp.ndarray:
+    if _is_jax_array(reference):
+        return jnp.asarray(data, dtype=reference.dtype)
+    return np.asarray(data, dtype=reference.dtype)
+
+
+def block_average_pool_nhwc(
+    latents: np.ndarray | jnp.ndarray,
+    *,
+    out_hw: int,
+) -> np.ndarray | jnp.ndarray:
+    if latents.ndim != 4:
+        raise ValueError(
+            f"Expected NHWC latents with rank 4 for block pooling, got shape {latents.shape}."
+        )
+    height = int(latents.shape[1])
+    width = int(latents.shape[2])
+    if height % out_hw != 0 or width % out_hw != 0:
+        raise ValueError(
+            f"Cannot pool latent grid {height}x{width} into {out_hw}x{out_hw} blocks."
+        )
+    pool_h = height // out_hw
+    pool_w = width // out_hw
+    reshaped = latents.reshape(
+        latents.shape[0],
+        out_hw,
+        pool_h,
+        out_hw,
+        pool_w,
+        latents.shape[-1],
+    )
+    return reshaped.mean(axis=(2, 4))
+
+
+@lru_cache(maxsize=None)
+def _fixed_projection_matrix(
+    in_channels: int,
+    out_channels: int,
+    *,
+    seed: int,
+) -> np.ndarray:
+    rng = np.random.default_rng(seed)
+    matrix = rng.standard_normal((in_channels, out_channels), dtype=np.float32)
+    norms = np.linalg.norm(matrix, axis=0, keepdims=True)
+    return (matrix / np.maximum(norms, 1e-6)).astype(np.float32)
+
+
+def project_channels_nhwc(
+    latents: np.ndarray | jnp.ndarray,
+    *,
+    out_channels: int,
+    seed: int,
+) -> np.ndarray | jnp.ndarray:
+    if latents.ndim != 4:
+        raise ValueError(
+            f"Expected NHWC latents with rank 4 for channel projection, got shape {latents.shape}."
+        )
+    matrix = _fixed_projection_matrix(int(latents.shape[-1]), out_channels, seed=seed)
+    backend_matrix = _as_backend_array(matrix, latents)
+    return latents @ backend_matrix
+
+
+def pyramid_16k_latents_nhwc(latents: np.ndarray | jnp.ndarray) -> np.ndarray | jnp.ndarray:
+    if latents.ndim != 4:
+        raise ValueError(
+            f"Expected NHWC latents with rank 4 for pyramid extraction, got shape {latents.shape}."
+        )
+    pooled_8 = block_average_pool_nhwc(latents, out_hw=8)
+    projected_8 = project_channels_nhwc(pooled_8, out_channels=896, seed=17)
+    pooled_4 = block_average_pool_nhwc(projected_8, out_hw=4)
+    projected_4 = project_channels_nhwc(pooled_4, out_channels=1024, seed=29)
+    return flatten_latents_nhwc(projected_4)
+
+
 def extract_gmm_features(
     latents: np.ndarray | jnp.ndarray,
     *,
@@ -86,6 +168,8 @@ def extract_gmm_features(
         return flatten_latents_nhwc(latents)
     if feature_extractor == "spatial_mean":
         return spatial_mean_latents_nhwc(latents)
+    if feature_extractor == "pyramid_16k":
+        return pyramid_16k_latents_nhwc(latents)
     raise ValueError(f"Unsupported GMM feature extractor: {feature_extractor}")
 
 
@@ -97,13 +181,13 @@ def choose_gmm_feature_extractor(
 ) -> str:
     requested = str(requested).strip().lower()
     if requested != "auto":
-        if requested not in {"flatten", "spatial_mean"}:
+        if requested not in {"flatten", "spatial_mean", "pyramid_16k"}:
             raise ValueError(f"Unsupported GMM feature extractor: {requested}")
         return requested
 
     flattened_dim = int(np.prod(np.asarray(latent_shape, dtype=np.int64)))
     if len(latent_shape) == 3 and flattened_dim > flatten_threshold:
-        return "spatial_mean"
+        return "pyramid_16k"
     return "flatten"
 
 
