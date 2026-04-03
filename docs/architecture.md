@@ -269,7 +269,6 @@ src_jax/
   stage1_sample.py
   push_hf.py
 raes-jax-celeba-kaggle-moe1.ipynb
-raes-jax-celeba-kaggle-tpuv5e8-sitdh-s-moe1.ipynb
 raes-jax-celeba-kaggle-tpuv5e8-sitdh-b-moe1.ipynb
 raes-jax-celeba-kaggle-tpuv5e8-sitdh-b-moe1-resume.ipynb
 ```

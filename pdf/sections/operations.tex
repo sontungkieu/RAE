@@ -136,8 +136,8 @@ python3 src_jax/train.py \
   hay Hugging Face cho CelebA-HQ vẫn còn trong repo, nhưng không còn là flow
   mặc định của branch này.
   \item Nếu phần cứng là Kaggle \texttt{TPU v5e-8}, dùng notebook
-  \texttt{raes-jax-celeba-kaggle-tpuv5e8-sitdh-s-moe1.ipynb}; bản này cố định biến
-  thể Stage 2 là \texttt{SiTDH-S + moe1}, chuyển FID và build reference stats sang
+  \texttt{raes-jax-celeba-kaggle-tpuv5e8-sitdh-b-moe1.ipynb}; bản này cố định biến
+  thể Stage 2 là \texttt{SiTDH-B + moe1}, chuyển FID và build reference stats sang
   detector backend-native của JAX, đồng thời cũng sync dependency của repo vào
   \texttt{/tmp/.venv} trước các bước \texttt{uv run}, tự xóa cờ executable-stack mà
   Kaggle có thể chặn trên \texttt{jaxlib}, rồi kiểm tra \texttt{jax}/TPU bằng

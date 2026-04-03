@@ -465,8 +465,8 @@ keep `--feature-extractor flatten` only for smaller experiments where you
 explicitly want the full latent vector.
 
 For Kaggle `TPU v5e-8`, use
-[../raes-jax-celeba-kaggle-tpuv5e8-sitdh-s-moe1.ipynb](../raes-jax-celeba-kaggle-tpuv5e8-sitdh-s-moe1.ipynb).
-That copy fixes the Stage 2 CelebA variant to `SiTDH-S + moe1`, syncs the repo
+[../raes-jax-celeba-kaggle-tpuv5e8-sitdh-b-moe1.ipynb](../raes-jax-celeba-kaggle-tpuv5e8-sitdh-b-moe1.ipynb).
+That copy fixes the Stage 2 CelebA variant to `SiTDH-B + moe1`, syncs the repo
 dependencies into `/tmp/.venv`, clears the `jaxlib` executable-stack flag that
 Kaggle can reject before each JAX import, runs the TPU device check in a fresh
 Python process, keeps Stage 1 and Stage 2 on TPU, builds the JAX `fid_ref`,
