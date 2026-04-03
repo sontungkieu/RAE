@@ -17,6 +17,8 @@ class JaxVendorPatchTests(unittest.TestCase):
         self.assertIn("self.gmm_var.value", overlay_text)
         self.assertIn("self.gmm_latent_mean.value", overlay_text)
         self.assertIn("self.gmm_latent_std.value", overlay_text)
+        self.assertIn("extract_gmm_features", overlay_text)
+        self.assertIn("self.gmm_feature_extractor", overlay_text)
 
     def test_backend_patches_preserve_model_initialized_ema(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir:

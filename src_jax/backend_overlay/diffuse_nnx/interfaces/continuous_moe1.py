@@ -7,7 +7,7 @@ import jax
 import jax.numpy as jnp
 
 from interfaces.continuous import SiTInterface, TrainingTimeDistType
-from moe1.gmm_utils import load_gmm_artifact, posterior_from_stats
+from moe1.gmm_utils import extract_gmm_features, load_gmm_artifact, posterior_from_stats
 from moe1.source_losses import balance_loss, entropy_loss, summarize_router, var_only_kld_loss
 from moe1.source_moe import SourceMoE
 
@@ -62,6 +62,7 @@ class SiTGMMMoe1Interface(SiTInterface):
         self.gmm_latent_mean = Buffer(jnp.asarray(artifact.latent_mean, dtype=jnp.float32))
         self.gmm_latent_std = Buffer(jnp.asarray(artifact.latent_std, dtype=jnp.float32))
         self.gmm_standardize_eps = float(artifact.standardize_eps)
+        self.gmm_feature_extractor = str(getattr(artifact, "feature_extractor", "flatten"))
 
         self.source_rngs = nnx.Rngs(
             self.source_seed,
@@ -95,9 +96,12 @@ class SiTGMMMoe1Interface(SiTInterface):
 
     def _posterior(self, x_data: jnp.ndarray) -> jnp.ndarray:
         gmm_log_pi, gmm_mu, gmm_var, gmm_latent_mean, gmm_latent_std = self._gmm_arrays()
-        x_flat = x_data.reshape((x_data.shape[0], -1))
+        x_features = extract_gmm_features(
+            x_data,
+            feature_extractor=self.gmm_feature_extractor,
+        )
         posterior = posterior_from_stats(
-            x_flat,
+            x_features,
             latent_mean=gmm_latent_mean,
             latent_std=gmm_latent_std,
             standardize_eps=self.gmm_standardize_eps,

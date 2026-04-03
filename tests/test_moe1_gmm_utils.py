@@ -8,7 +8,9 @@ import numpy as np
 
 try:
     from src_jax.moe1.gmm_utils import (
+        choose_gmm_feature_extractor,
         compute_active_modes,
+        extract_gmm_features,
         fit_diag_gmm,
         flatten_latents_nhwc,
         load_gmm_artifact,
@@ -17,7 +19,9 @@ try:
     )
     _IMPORT_ERROR = None
 except ModuleNotFoundError as exc:
+    choose_gmm_feature_extractor = None
     compute_active_modes = None
+    extract_gmm_features = None
     fit_diag_gmm = None
     flatten_latents_nhwc = None
     load_gmm_artifact = None
@@ -33,6 +37,22 @@ class Moe1GmmUtilsTests(unittest.TestCase):
         flattened = flatten_latents_nhwc(latents)
         self.assertEqual(flattened.shape, (2, 60))
         np.testing.assert_allclose(flattened[0], latents[0].reshape(-1))
+
+    def test_extract_gmm_features_supports_spatial_mean(self) -> None:
+        latents = np.arange(2 * 3 * 4 * 5, dtype=np.float32).reshape(2, 3, 4, 5)
+        pooled = extract_gmm_features(latents, feature_extractor="spatial_mean")
+        self.assertEqual(pooled.shape, (2, 5))
+        np.testing.assert_allclose(pooled[0], latents[0].mean(axis=(0, 1)))
+
+    def test_choose_gmm_feature_extractor_prefers_spatial_mean_for_large_rae_latents(self) -> None:
+        self.assertEqual(
+            choose_gmm_feature_extractor((16, 16, 768), requested="auto"),
+            "spatial_mean",
+        )
+        self.assertEqual(
+            choose_gmm_feature_extractor((32, 32, 4), requested="auto"),
+            "flatten",
+        )
 
     def test_fit_diag_gmm_round_trip_and_posterior_normalization(self) -> None:
         rng = np.random.default_rng(0)
@@ -75,6 +95,7 @@ class Moe1GmmUtilsTests(unittest.TestCase):
         self.assertEqual(loaded.active_modes, artifact.active_modes)
         self.assertEqual(loaded.latent_semantics, "rae_encoded_output")
         self.assertEqual(loaded.vae_scale_factor, 1.0)
+        self.assertEqual(loaded.feature_extractor, "flatten")
 
     def test_compute_active_modes_uses_fraction_threshold(self) -> None:
         counts = np.asarray([50.0, 25.0, 20.0, 5.0], dtype=np.float32)

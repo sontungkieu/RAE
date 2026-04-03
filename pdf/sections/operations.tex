@@ -128,7 +128,9 @@ python3 src_jax/train.py \
   \texttt{ImageFolder}, rồi
   chạy các bước phụ thuộc package qua \texttt{uv run}. Flow notebook này giờ
   build thêm artifact \texttt{celeba256\_source\_gmm.npz} qua
-  \texttt{src\_jax/build\_source\_gmm.py},
+  \texttt{src\_jax/build\_source\_gmm.py}. Trên latent RAE DH lớn, script này
+  mặc định rơi về \texttt{feature\_extractor=spatial\_mean} nên fit GMM cho
+  full CelebA không còn cố giữ toàn bộ latent flatten trong RAM,
   rồi mới ghi config Stage 2 với block \texttt{source.enabled=true}. Route TFDS
   hay Hugging Face cho CelebA-HQ vẫn còn trong repo, nhưng không còn là flow
   mặc định của branch này.

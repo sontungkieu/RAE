@@ -8,11 +8,21 @@ import numpy as np
 
 try:
     from .config_adapter import cfg_to_dict, load_repo_config
-    from .moe1.gmm_utils import fit_diag_gmm, flatten_latents_nhwc, save_gmm_artifact
+    from .moe1.gmm_utils import (
+        choose_gmm_feature_extractor,
+        extract_gmm_features,
+        fit_diag_gmm,
+        save_gmm_artifact,
+    )
     from .stage1_runtime import _iter_batches, _load_batch, _load_stage1_encoder, list_image_files
 except ImportError:
     from config_adapter import cfg_to_dict, load_repo_config
-    from moe1.gmm_utils import fit_diag_gmm, flatten_latents_nhwc, save_gmm_artifact
+    from moe1.gmm_utils import (
+        choose_gmm_feature_extractor,
+        extract_gmm_features,
+        fit_diag_gmm,
+        save_gmm_artifact,
+    )
     from stage1_runtime import _iter_batches, _load_batch, _load_stage1_encoder, list_image_files
 
 
@@ -42,6 +52,15 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--active-mode-fraction-threshold", type=float, default=0.01)
     parser.add_argument("--standardize-eps", type=float, default=1e-6)
     parser.add_argument("--chunk-size", type=int, default=256)
+    parser.add_argument(
+        "--feature-extractor",
+        choices=["auto", "flatten", "spatial_mean"],
+        default="auto",
+        help=(
+            "How to convert NHWC latents into GMM features. "
+            "'auto' picks spatial_mean for very large RAE latents to avoid OOM."
+        ),
+    )
     parser.add_argument("--set", dest="set_values", action="append", default=[], help="OmegaConf override.")
     return parser
 
@@ -66,8 +85,9 @@ def run_build_source_gmm(args: argparse.Namespace) -> Path:
     if not image_paths:
         raise FileNotFoundError(f"No images selected from: {args.input}")
 
-    flattened_batches: list[np.ndarray] = []
+    feature_batches: list[np.ndarray] = []
     latent_shape: tuple[int, ...] | None = None
+    feature_extractor: str | None = None
     total = len(image_paths)
     processed = 0
 
@@ -76,15 +96,29 @@ def run_build_source_gmm(args: argparse.Namespace) -> Path:
         latents = np.asarray(encoder.encode(jnp.asarray(batch)), dtype=np.float32)
         if latent_shape is None:
             latent_shape = tuple(int(dim) for dim in latents.shape[1:])
-        flattened_batches.append(np.asarray(flatten_latents_nhwc(latents), dtype=np.float32))
+            feature_extractor = choose_gmm_feature_extractor(
+                latent_shape,
+                requested=args.feature_extractor,
+            )
+            feature_shape = tuple(int(dim) for dim in extract_gmm_features(latents[:1], feature_extractor=feature_extractor).shape[1:])
+            print(
+                "[source-gmm] using feature_extractor="
+                f"{feature_extractor} for latent_shape={latent_shape} -> feature_shape={feature_shape}"
+            )
+        feature_batches.append(
+            np.asarray(
+                extract_gmm_features(latents, feature_extractor=feature_extractor or "flatten"),
+                dtype=np.float32,
+            )
+        )
         processed += latents.shape[0]
         if args.log_every > 0 and (batch_idx == 1 or batch_idx % args.log_every == 0 or processed == total):
             print(f"[source-gmm] processed {processed}/{total} images")
 
-    if latent_shape is None:
+    if latent_shape is None or feature_extractor is None:
         raise RuntimeError("Failed to infer latent shape while building source GMM.")
 
-    latents_flat = np.concatenate(flattened_batches, axis=0)
+    latents_flat = np.concatenate(feature_batches, axis=0)
     artifact = fit_diag_gmm(
         latents_flat,
         num_modes=args.num_modes,
@@ -100,8 +134,14 @@ def run_build_source_gmm(args: argparse.Namespace) -> Path:
         chunk_size=args.chunk_size,
         latent_semantics=latent_semantics,
         vae_scale_factor=vae_scale_factor,
+        feature_extractor=feature_extractor,
     )
-    artifact = dataclasses.replace(artifact, latent_shape=latent_shape, layout="NHWC")
+    artifact = dataclasses.replace(
+        artifact,
+        latent_shape=latent_shape,
+        layout="NHWC",
+        feature_extractor=feature_extractor,
+    )
     return save_gmm_artifact(args.output, artifact)
 
 

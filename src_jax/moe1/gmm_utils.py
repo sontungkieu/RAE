@@ -35,6 +35,7 @@ class GMMArtifact:
     active_mode_fraction_threshold: float
     final_counts: np.ndarray
     n_iter: int
+    feature_extractor: str = "flatten"
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -59,11 +60,51 @@ class GMMArtifact:
             ),
             "final_counts": np.asarray(self.final_counts, dtype=np.float32),
             "n_iter": np.asarray(self.n_iter, dtype=np.int32),
+            "feature_extractor": np.asarray(self.feature_extractor),
         }
 
 
 def flatten_latents_nhwc(latents: np.ndarray | jnp.ndarray) -> np.ndarray | jnp.ndarray:
     return latents.reshape((latents.shape[0], -1))
+
+
+def spatial_mean_latents_nhwc(latents: np.ndarray | jnp.ndarray) -> np.ndarray | jnp.ndarray:
+    if latents.ndim != 4:
+        raise ValueError(
+            f"Expected NHWC latents with rank 4 for spatial mean pooling, got shape {latents.shape}."
+        )
+    return latents.mean(axis=(1, 2))
+
+
+def extract_gmm_features(
+    latents: np.ndarray | jnp.ndarray,
+    *,
+    feature_extractor: str = "flatten",
+) -> np.ndarray | jnp.ndarray:
+    feature_extractor = str(feature_extractor).strip().lower()
+    if feature_extractor == "flatten":
+        return flatten_latents_nhwc(latents)
+    if feature_extractor == "spatial_mean":
+        return spatial_mean_latents_nhwc(latents)
+    raise ValueError(f"Unsupported GMM feature extractor: {feature_extractor}")
+
+
+def choose_gmm_feature_extractor(
+    latent_shape: tuple[int, ...],
+    *,
+    requested: str = "auto",
+    flatten_threshold: int = 16384,
+) -> str:
+    requested = str(requested).strip().lower()
+    if requested != "auto":
+        if requested not in {"flatten", "spatial_mean"}:
+            raise ValueError(f"Unsupported GMM feature extractor: {requested}")
+        return requested
+
+    flattened_dim = int(np.prod(np.asarray(latent_shape, dtype=np.int64)))
+    if len(latent_shape) == 3 and flattened_dim > flatten_threshold:
+        return "spatial_mean"
+    return "flatten"
 
 
 def compute_standardization_stats(
@@ -281,6 +322,7 @@ def fit_diag_gmm(
     chunk_size: int = 256,
     latent_semantics: str = "latent_encoded_output",
     vae_scale_factor: float = 1.0,
+    feature_extractor: str = "flatten",
 ) -> GMMArtifact:
     if latents_flat.ndim != 2:
         raise ValueError(f"Expected 2D latent array, got shape {latents_flat.shape}.")
@@ -375,6 +417,7 @@ def fit_diag_gmm(
                 active_mode_fraction_threshold=float(active_mode_fraction_threshold),
                 final_counts=final_counts.astype(np.float32),
                 n_iter=int(n_iter),
+                feature_extractor=str(feature_extractor),
             )
 
     if best_artifact is None:
@@ -413,4 +456,9 @@ def load_gmm_artifact(path: str | Path) -> GMMArtifact:
             ),
             final_counts=np.asarray(payload["final_counts"], dtype=np.float32),
             n_iter=int(np.asarray(payload["n_iter"]).item()),
+            feature_extractor=str(
+                np.asarray(payload["feature_extractor"]).item()
+                if "feature_extractor" in payload.files
+                else "flatten"
+            ),
         )
