@@ -283,55 +283,42 @@ python3 src_jax/train.py \
   --hf-repo-id <hf_user_or_org>/<repo_name>
 \end{lstlisting}
 
-\subsection{Notebook Kaggle cho CelebA-HQ}
+\subsection{Notebook Kaggle cho CelebA}
 
-Repo hiện có notebook \texttt{raes-jax-celebahq-kaggle-moe1.ipynb} để bám đúng
+Repo hiện có notebook \texttt{raes-jax-celeba-kaggle-moe1.ipynb} để bám đúng
 flow Kaggle của branch learned-source:
 
 \begin{itemize}[leftmargin=1.5em]
-  \item clone repo và checkout branch \texttt{jax-sit-dh-moe1-celebahq256};
+  \item clone repo và checkout branch \texttt{jax-sit-dh-moe1};
   \item đặt \texttt{UV\_PROJECT\_ENVIRONMENT=/tmp/.venv} và \texttt{UV\_CACHE\_DIR=/tmp/uv-cache};
   \item chạy \texttt{uv sync -q} từ root của repo;
   \item chạy các bước phụ thuộc package qua \texttt{uv run};
-  \item tải dataset Hugging Face \texttt{eurecom-ds/celeba-hq-256} rồi export thành \texttt{ImageFolder} \texttt{256x256};
+  \item chuẩn hoá dataset Kaggle CelebA thành \texttt{ImageFolder} \texttt{256x256};
   \item tạo bootstrap identity stat, build latent stat cho Stage 1;
   \item export reconstruction validation set, build \texttt{fid\_ref};
   \item build artifact diagonal GMM bằng \texttt{src\_jax/build\_source\_gmm.py};
-  \item ghi sẵn config CelebA-HQ với block \texttt{source.enabled=true} cho \texttt{src\_jax/train.py}.
+  \item ghi sẵn config CelebA với block \texttt{source.enabled=true} cho \texttt{src\_jax/train.py}.
 \end{itemize}
 
-Script mặc định đứng sau bước export là \texttt{src\_jax/export\_celebahq\_hf.py}.
-Đường train JAX hiện tại vẫn tiêu thụ \texttt{ImageFolder}, nên notebook chỉ
-dùng Hugging Face để tải \texttt{eurecom-ds/celeba-hq-256} vào cache cục bộ rồi
-materialize dữ liệu đầu vào tại chỗ. Nếu vẫn muốn đi theo route TFDS cũ, repo
-giữ lại \texttt{src\_jax/export\_celebahq\_tfds.py}; script đó vẫn cần các tar
-file manual chính thức và vẫn ép
-\texttt{PROTOCOL\_BUFFERS\_PYTHON\_IMPLEMENTATION=python} trước khi import TFDS
-để tránh lỗi Kaggle kiểu ``Descriptors cannot be created directly'' khi
-protobuf trong môi trường không đồng nhất.
-
-Cell train Stage 2 cuối của các notebook CelebA-HQ truyền
-\texttt{--data-path /kaggle/working/celebahq256\_imgfolder}, còn
-\texttt{eval.data\_path} trong config sinh ra vẫn trỏ tới split
-\texttt{val}. Các notebook này mặc định bật
-\texttt{training.random\_flip=true}, giữ \texttt{eval.random\_flip=false}, và
-các bản TPU còn tăng \texttt{training.prefetch\_factor=8} cùng
-\texttt{eval.prefetch\_factor=4}. Các notebook \texttt{moe1} còn bật
-\texttt{training.log\_rae\_latent\_stats=true},
+Notebook này giữ dataset nguồn mặc định là bộ Kaggle CelebA chuẩn, center-crop
+và resize về \texttt{256x256}, rồi materialize dữ liệu thành
+\texttt{/kaggle/working/celeba256\_imgfolder}. Notebook GPU train trực tiếp từ
+split \texttt{train}, còn hai notebook TPU dùng root \texttt{ImageFolder} và
+vẫn giữ \texttt{eval.data\_path} trên split \texttt{val}. Các notebook TPU
+\texttt{moe1} bật \texttt{training.log\_rae\_latent\_stats=true},
 \texttt{training.log\_activation\_stats=true}, và export
 \texttt{RAE\_JAX\_REBUILD\_BACKEND=1} để backend overlay luôn recopy interface
 \texttt{sit\_gmm\_moe1} trong session Kaggle mới.
 
 Nếu chạy trên Kaggle \texttt{TPU v5e-8}, dùng notebook
-\texttt{raes-jax-celebahq-kaggle-tpuv5e8-sitdh-s-moe1.ipynb}. Bản này cố định biến thể
-CelebA-HQ Stage 2 là \texttt{SiTDH-S + moe1}, sync dependency của repo vào
+\texttt{raes-jax-celeba-kaggle-tpuv5e8-sitdh-s-moe1.ipynb}. Bản này cố định biến thể
+CelebA Stage 2 là \texttt{SiTDH-S + moe1}, sync dependency của repo vào
 \texttt{/tmp/.venv}, tự xóa cờ executable-stack mà Kaggle có thể chặn trên
 \texttt{jaxlib}, chạy bước xác nhận TPU trong một tiến trình Python mới, giữ
 Stage 1 và Stage 2 ở TPU, đồng thời build \texttt{fid\_ref} bằng đúng detector
-backend dùng cho online FID, build thêm
-\texttt{celebahq256\_source\_gmm.npz}, và giữ cadence checkpoint mặc định ở mốc
-\texttt{210000} step. Config train CelebA-HQ của notebook này cũng bật
-\texttt{training.random\_flip=true}. Block \texttt{source} sinh ra dùng
+backend dùng cho online FID, build thêm \texttt{celeba256\_source\_gmm.npz},
+và giữ cadence checkpoint mặc định ở mốc \texttt{210000} step. Block
+\texttt{source} sinh ra dùng
 \texttt{condition\_dim=16}, \texttt{hidden\_channels=256},
 \texttt{router\_temperature=2.0}, \texttt{balance\_loss\_weight=0.1},
 \texttt{entropy\_loss\_weight=1.0e-2}, và
@@ -340,14 +327,13 @@ backend dùng cho online FID, build thêm
 
 Nếu muốn giữ nguyên flow đó nhưng đổi Stage 2 sang biến thể DH
 \texttt{SiTDH-B + moe1},
-dùng notebook \texttt{raes-jax-celebahq-kaggle-tpuv5e8-sitdh-b-moe1.ipynb}. Notebook
-này ghi config CelebA-HQ thành
-\texttt{CelebAHQ256\_SiTDH-B\_DINOv2-B\_moe1\_jax\_tpuv5e8.yaml}, đặt backbone DH thành
+dùng notebook \texttt{raes-jax-celeba-kaggle-tpuv5e8-sitdh-b-moe1.ipynb}. Notebook
+này ghi config CelebA thành
+\texttt{CelebA256\_SiTDH-B\_DINOv2-B\_moe1\_jax\_tpuv5e8.yaml}, đặt backbone DH thành
 \texttt{hidden\_size=[768, 2048]}, \texttt{depth=[12, 2]},
 \texttt{num\_heads=[12, 16]}, bật \texttt{use\_pos\_embed}, tắt label dropout
-bằng \texttt{class\_dropout\_prob=0.0}, bật
-\texttt{training.random\_flip=true}, đặt tên run/project mặc định theo biến thể
-\texttt{SiTDH-B}, build artifact GMM trước train, và giữ cùng cadence
+bằng \texttt{class\_dropout\_prob=0.0}, đặt tên run/project mặc định theo biến
+thể \texttt{SiTDH-B}, build artifact GMM trước train, và giữ cùng cadence
 checkpoint \texttt{210000} step. Block \texttt{source} của notebook này cũng
 dùng \texttt{condition\_dim=16}, \texttt{hidden\_channels=256},
 \texttt{router\_temperature=2.0}, \texttt{balance\_loss\_weight=0.1},
@@ -356,7 +342,7 @@ dùng \texttt{condition\_dim=16}, \texttt{hidden\_channels=256},
 \texttt{--num-workers 32}.
 
 Nếu đã có thư mục run Orbax của \texttt{SiTDH-B + moe1} và cần train tiếp, dùng
-notebook \texttt{raes-jax-celebahq-kaggle-tpuv5e8-sitdh-b-moe1-resume.ipynb}. Notebook
+notebook \texttt{raes-jax-celeba-kaggle-tpuv5e8-sitdh-b-moe1-resume.ipynb}. Notebook
 này đã được rút xuống thành bản resume-only cho trường hợp bắt đầu từ output
 archive của notebook cũ: cell đầu chạy lệnh \texttt{unzip -o
 /kaggle/input/notebooks/kieuhongquan/rae-jax/\_output\_.zip -d

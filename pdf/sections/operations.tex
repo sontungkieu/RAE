@@ -120,43 +120,41 @@ python3 src_jax/train.py \
   \texttt{src\_jax/build\_stage1\_stats.py} và \texttt{src\_jax/reconstruct\_folder.py}.
   Các lệnh này có thể dùng YAML chỉ có \texttt{stage\_1}, không cần
   \texttt{stage\_2.target}.
-  \item Nếu chạy trên Kaggle với CelebA-HQ cho branch learned-source này, bắt đầu từ notebook
-  \texttt{raes-jax-celebahq-kaggle-moe1.ipynb} để giữ đúng flow clone repo, đặt
+  \item Nếu chạy trên Kaggle với CelebA cho branch learned-source này, bắt đầu từ notebook
+  \texttt{raes-jax-celeba-kaggle-moe1.ipynb} để giữ đúng flow clone repo, đặt
   \texttt{UV\_PROJECT\_ENVIRONMENT=/tmp/.venv} và
   \texttt{UV\_CACHE\_DIR=/tmp/uv-cache}, chạy \texttt{uv sync -q}, tải
-  \texttt{eurecom-ds/celeba-hq-256} từ Hugging Face và export sang
-  \texttt{ImageFolder} bằng \texttt{src\_jax/export\_celebahq\_hf.py}, rồi
+  dataset Kaggle CelebA, center-crop và resize sang
+  \texttt{ImageFolder}, rồi
   chạy các bước phụ thuộc package qua \texttt{uv run}. Flow notebook này giờ
-  cũng mặc định bật \texttt{training.random\_flip=true}, build thêm artifact
-  \texttt{celebahq256\_source\_gmm.npz} qua \texttt{src\_jax/build\_source\_gmm.py},
+  build thêm artifact \texttt{celeba256\_source\_gmm.npz} qua
+  \texttt{src\_jax/build\_source\_gmm.py},
   rồi mới ghi config Stage 2 với block \texttt{source.enabled=true}. Route TFDS
-  cũ vẫn còn trong repo, nhưng chỉ đóng vai trò fallback khi cần source manual
-  chính thức.
+  hay Hugging Face cho CelebA-HQ vẫn còn trong repo, nhưng không còn là flow
+  mặc định của branch này.
   \item Nếu phần cứng là Kaggle \texttt{TPU v5e-8}, dùng notebook
-  \texttt{raes-jax-celebahq-kaggle-tpuv5e8-sitdh-s-moe1.ipynb}; bản này cố định biến
+  \texttt{raes-jax-celeba-kaggle-tpuv5e8-sitdh-s-moe1.ipynb}; bản này cố định biến
   thể Stage 2 là \texttt{SiTDH-S + moe1}, chuyển FID và build reference stats sang
   detector backend-native của JAX, đồng thời cũng sync dependency của repo vào
   \texttt{/tmp/.venv} trước các bước \texttt{uv run}, tự xóa cờ executable-stack mà
   Kaggle có thể chặn trên \texttt{jaxlib}, rồi kiểm tra \texttt{jax}/TPU bằng
-  tiến trình Python mới. Notebook này cũng tải \texttt{eurecom-ds/celeba-hq-256}
-  từ Hugging Face rồi export sang \texttt{ImageFolder} trước khi build Stage 1 stat,
-  build \texttt{fid\_ref}, build \texttt{celebahq256\_source\_gmm.npz}, bật
-  \texttt{training.random\_flip=true}, export
+  tiến trình Python mới. Notebook này cũng chuẩn hoá CelebA sang
+  \texttt{ImageFolder} trước khi build Stage 1 stat, build \texttt{fid\_ref},
+  build \texttt{celeba256\_source\_gmm.npz}, export
   \texttt{RAE\_JAX\_REBUILD\_BACKEND=1}, và giữ mốc checkpoint mặc định ở
   \texttt{210000} step.
   \item Nếu cần cùng flow Kaggle TPU đó nhưng muốn train biến thể
   \texttt{SiTDH-B + moe1}, dùng notebook
-  \texttt{raes-jax-celebahq-kaggle-tpuv5e8-sitdh-b-moe1.ipynb}. Bản này giữ toàn bộ
+  \texttt{raes-jax-celeba-kaggle-tpuv5e8-sitdh-b-moe1.ipynb}. Bản này giữ toàn bộ
   fix Kaggle/JAX hiện có, đổi Stage 2 sang recipe DH/two-tower
   \texttt{SiTDH-B} với \texttt{hidden\_size=[768, 2048]},
   \texttt{depth=[12, 2]}, \texttt{num\_heads=[12, 16]},
-  \texttt{use\_pos\_embed=true}, \texttt{class\_dropout\_prob=0.0},
-  \texttt{training.random\_flip=true}, ghi config
-  \texttt{CelebAHQ256\_SiTDH-B\_DINOv2-B\_moe1\_jax\_tpuv5e8.yaml}, build artifact
+  \texttt{use\_pos\_embed=true}, \texttt{class\_dropout\_prob=0.0}, ghi config
+  \texttt{CelebA256\_SiTDH-B\_DINOv2-B\_moe1\_jax\_tpuv5e8.yaml}, build artifact
   GMM trước train, và dùng cùng cadence checkpoint \texttt{210000} step.
   \item Nếu đã có sẵn một run Orbax của \texttt{SiTDH-B + moe1} và cần train tiếp từ
   checkpoint hiện có, dùng notebook
-  \texttt{raes-jax-celebahq-kaggle-tpuv5e8-sitdh-b-moe1-resume.ipynb}. Notebook này
+  \texttt{raes-jax-celeba-kaggle-tpuv5e8-sitdh-b-moe1-resume.ipynb}. Notebook này
   là bản resume-only tối giản cho trường hợp bắt đầu từ output archive của
   notebook cũ: cell đầu chạy lệnh \texttt{unzip -o
   /kaggle/input/notebooks/kieuhongquan/rae-jax/\_output\_.zip -d

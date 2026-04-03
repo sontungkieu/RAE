@@ -150,7 +150,7 @@ Lưu ý:
 
 \subsection{Block \texttt{source}}
 
-Trên branch \texttt{jax-sit-dh-moe1-celebahq256}, block \texttt{source} bật
+Trên branch \texttt{jax-sit-dh-moe1}, block \texttt{source} bật
 đường learned-source \texttt{GMM + CNN-MoE}. Khi
 \texttt{source.enabled=true}, adapter sẽ đổi \texttt{interface\_class} từ
 \texttt{sit} sang \texttt{sit\_gmm\_moe1}.
@@ -159,7 +159,7 @@ Trên branch \texttt{jax-sit-dh-moe1-celebahq256}, block \texttt{source} bật
 source:
   enabled: true
   kind: gmm_moe1
-  gmm_stats_path: artifacts/celebahq256_source_gmm.npz
+  gmm_stats_path: artifacts/celeba256_source_gmm.npz
   num_modes: 4
   condition_dim: 16
   hidden_channels: 256

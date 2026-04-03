@@ -11,7 +11,7 @@ Representation Autoencoders (RAE):
    sampled latents back into images through the Stage 1 decoder.
 
 The XLA branch focuses on TPU execution for Stage 2 training and sampling, with
-optional host-side FID scoring. The current `jax-sit-dh-moe1-celebahq256` branch also adds a thin JAX/NNX
+optional host-side FID scoring. The current `jax-sit-dh-moe1` branch also adds a thin JAX/NNX
 compatibility layer under `src_jax/` that maps the repository's existing YAML
 schema into a pinned `diffuse_nnx` backend, including backend-native FID
 reference building, held-out validation loss, backend overlay patching, and a
@@ -268,10 +268,10 @@ src_jax/
   sample_ddp.py
   stage1_sample.py
   push_hf.py
-raes-jax-celebahq-kaggle-moe1.ipynb
-raes-jax-celebahq-kaggle-tpuv5e8-sitdh-s-moe1.ipynb
-raes-jax-celebahq-kaggle-tpuv5e8-sitdh-b-moe1.ipynb
-raes-jax-celebahq-kaggle-tpuv5e8-sitdh-b-moe1-resume.ipynb
+raes-jax-celeba-kaggle-moe1.ipynb
+raes-jax-celeba-kaggle-tpuv5e8-sitdh-s-moe1.ipynb
+raes-jax-celeba-kaggle-tpuv5e8-sitdh-b-moe1.ipynb
+raes-jax-celeba-kaggle-tpuv5e8-sitdh-b-moe1-resume.ipynb
 ```
 
 ## Checkpoint Compatibility
