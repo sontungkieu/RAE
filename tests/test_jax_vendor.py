@@ -9,6 +9,15 @@ from src_jax.vendor import _apply_backend_compat_patches, _sync_backend_overlay
 
 
 class JaxVendorPatchTests(unittest.TestCase):
+    def test_continuous_moe1_overlay_reads_buffer_values_explicitly(self) -> None:
+        overlay_path = Path("src_jax/backend_overlay/diffuse_nnx/interfaces/continuous_moe1.py")
+        overlay_text = overlay_path.read_text(encoding="utf-8")
+        self.assertIn("self.gmm_log_pi.value", overlay_text)
+        self.assertIn("self.gmm_mu.value", overlay_text)
+        self.assertIn("self.gmm_var.value", overlay_text)
+        self.assertIn("self.gmm_latent_mean.value", overlay_text)
+        self.assertIn("self.gmm_latent_std.value", overlay_text)
+
     def test_backend_patches_preserve_model_initialized_ema(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir:
             backend_dir = Path(tmp_dir)

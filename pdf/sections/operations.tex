@@ -55,6 +55,11 @@ python3 src_jax/build_fid_stats.py \
   --num-workers 8
 \end{lstlisting}
 
+Trên host JAX như Kaggle TPU, nên giữ \texttt{--num-workers} ở mức vừa phải
+(\texttt{0-8} thường là đủ). Script này dùng worker kiểu \texttt{spawn} khi
+\texttt{num\_workers > 0}, nên tránh được cảnh báo \texttt{os.fork()} thường
+gặp với JAX đa luồng.
+
 \subsection{Artifact của Stage 2 training}
 
 \subsubsection{Đường XLA}

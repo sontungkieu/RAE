@@ -238,7 +238,14 @@ per encoder/decoder block such as `train_sitdh_act_enc_00_rms` and
 If you enable `source.enabled: true`, the same JAX loop also logs
 `train_loss_fm`, `train_loss_balance`, `train_loss_entropy`, `train_loss_var`,
 `train_source_router_entropy`, `train_source_router_max`, and
-`train_source_active_modes`.
+`train_source_active_modes`, `train_source_logvar_mean`, and
+`train_source_var_mean`.
+
+The current VAE `moe1` defaults are aligned with the public
+`shortcut-models@moe1` branch for the source-side recipe:
+`condition_dim=16`, `hidden_channels=64`, `router_temperature=2.0`,
+`balance_loss_weight=0.1`, `entropy_loss_weight=1.0e-2`, and
+`var_kl_loss_weight=1.0`.
 
 Only the master rank initializes and logs to wandb.
 
@@ -564,6 +571,10 @@ python3 src_jax/build_fid_stats.py \
   --batch-size 64 \
   --num-workers 8
 ```
+
+Trên host JAX như Kaggle TPU, nên giữ `--num-workers` ở mức vừa phải (`0-8`
+thường là đủ). Script JAX này dùng `spawn` khi `num_workers > 0`, nên tránh
+được cảnh báo `os.fork()` thường gặp với JAX đa luồng.
 
 From an existing `.npz` or `.npy` archive:
 

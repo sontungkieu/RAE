@@ -209,13 +209,13 @@ source:
   kind: gmm_moe1
   gmm_stats_path: artifacts/celeba256_source_gmm.npz
   num_modes: 4
-  condition_dim: 64
-  hidden_channels: 128
-  router_temperature: 1.0
+  condition_dim: 16
+  hidden_channels: 64
+  router_temperature: 2.0
   soft_moe: true
-  balance_loss_weight: 1.0e-2
-  entropy_loss_weight: 1.0e-3
-  var_kl_loss_weight: 1.0e-3
+  balance_loss_weight: 0.1
+  entropy_loss_weight: 1.0e-2
+  var_kl_loss_weight: 1.0
   target_variance: 1.0
   logvar_min: -8.0
   logvar_max: 4.0
@@ -239,7 +239,10 @@ Meaning:
 - `router_temperature`: router softmax temperature
 - `soft_moe`: keep the router mixture soft instead of straight-through hard
 - `balance_loss_weight`, `entropy_loss_weight`, `var_kl_loss_weight`: weights
-  for the source-side auxiliary losses
+  for the source-side auxiliary losses; the current defaults intentionally
+  follow the public `shortcut-models@moe1` recipe more closely, with a softer
+  router (`temperature=2.0`) and much stronger source-variance regularization
+  (`var_kl_loss_weight=1.0`)
 - `target_variance`, `logvar_min`, `logvar_max`, `var_floor`: variance control
   for the learned source
 - `posterior_eps`: epsilon for posterior numerics

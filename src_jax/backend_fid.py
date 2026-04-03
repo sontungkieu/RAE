@@ -64,8 +64,30 @@ class RawImageDataset(Dataset[tuple[torch.Tensor, int]]):
             image = image.convert("RGB")
             if self.image_size is not None:
                 image = center_crop_arr(image, self.image_size)
-            arr = np.asarray(image, dtype=np.uint8)
+            # PIL-backed arrays may be read-only; materialize a writable copy before torch conversion.
+            arr = np.array(image, dtype=np.uint8, copy=True)
         return torch.from_numpy(arr).permute(2, 0, 1), 0
+
+
+def _build_loader(
+    dataset: Dataset[tuple[torch.Tensor, int]],
+    *,
+    batch_size: int,
+    num_workers: int,
+) -> DataLoader[tuple[torch.Tensor, int]]:
+    loader_kwargs: dict[str, object] = {
+        "dataset": dataset,
+        "batch_size": batch_size,
+        "shuffle": False,
+        "num_workers": num_workers,
+        "pin_memory": False,
+        "drop_last": False,
+    }
+    if num_workers > 0:
+        # Avoid the default fork start method on JAX-heavy hosts such as Kaggle TPU.
+        loader_kwargs["multiprocessing_context"] = "spawn"
+        loader_kwargs["persistent_workers"] = False
+    return DataLoader(**loader_kwargs)
 
 
 def _build_detector() -> tuple[object, object]:
@@ -133,14 +155,7 @@ def calculate_backend_reference_stats(
 
     image_paths = list_image_files(image_root)
     dataset = RawImageDataset(image_paths, image_size=image_size)
-    loader = DataLoader(
-        dataset,
-        batch_size=batch_size,
-        shuffle=False,
-        num_workers=num_workers,
-        pin_memory=False,
-        drop_last=False,
-    )
+    loader = _build_loader(dataset, batch_size=batch_size, num_workers=num_workers)
     return _compute_moments_from_loader(loader)
 
 

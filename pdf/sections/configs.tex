@@ -139,13 +139,13 @@ source:
   kind: gmm_moe1
   gmm_stats_path: artifacts/celeba256_source_gmm.npz
   num_modes: 4
-  condition_dim: 64
-  hidden_channels: 128
-  router_temperature: 1.0
+  condition_dim: 16
+  hidden_channels: 64
+  router_temperature: 2.0
   soft_moe: true
-  balance_loss_weight: 1.0e-2
-  entropy_loss_weight: 1.0e-3
-  var_kl_loss_weight: 1.0e-3
+  balance_loss_weight: 0.1
+  entropy_loss_weight: 1.0e-2
+  var_kl_loss_weight: 1.0
   target_variance: 1.0
   logvar_min: -8.0
   logvar_max: 4.0
@@ -167,7 +167,11 @@ source:
   \item \texttt{condition\_dim}, \texttt{hidden\_channels}: độ rộng của
   \texttt{SourceMoE};
   \item \texttt{balance\_loss\_weight}, \texttt{entropy\_loss\_weight},
-  \texttt{var\_kl\_loss\_weight}: trọng số auxiliary losses phía source;
+  \texttt{var\_kl\_loss\_weight}: trọng số auxiliary losses phía source. Các
+  default hiện tại được kéo gần public recipe của
+  \texttt{shortcut-models@moe1}: router mềm hơn với
+  \texttt{router\_temperature=2.0}, độ rộng \texttt{16/64}, và regularization
+  variance mạnh hơn với \texttt{var\_kl\_loss\_weight=1.0};
   \item \texttt{logvar\_min}, \texttt{logvar\_max}, \texttt{var\_floor}: chặn
   variance của source học được;
   \item các knob \texttt{em\_*} và \texttt{dead\_count\_threshold}: điều khiển

@@ -362,6 +362,7 @@ Key behavior:
 - `src_jax/build_fid_stats.py` builds backend-native `fid_ref` files with the same Flax Inception detector used by JAX online FID.
 - `training.log_rae_latent_stats=true` keeps the existing `train_rae_latent_*` metric names, but now covers whichever Stage 1 latent tensor the JAX path actually feeds into Stage 2, including `StabilityVAE`.
 - `training.log_activation_stats=true` logs RMS and variance for the selected Stage 2 backbone: `train_sitdh_*` for DH/two-tower runs and `train_sit_*` for single-tower `SiT` runs.
+- the `moe1` learned-source path now follows the public `shortcut-models@moe1` source recipe more closely by default: `condition_dim=16`, `hidden_channels=64`, `router_temperature=2.0`, `balance_loss_weight=0.1`, `entropy_loss_weight=1.0e-2`, and `var_kl_loss_weight=1.0`; new runs also log `train_source_logvar_mean` and `train_source_var_mean` so router specialization and source variance drift are visible in wandb.
 - `training.prefetch_factor` and `eval.prefetch_factor` now forward directly into the host-side PyTorch `DataLoader` used by the JAX Stage 2 path, so you can deepen the per-worker prefetch queue without editing the cached backend checkout by hand.
 - the branch no longer keeps dedicated `raes-jax-celebahq*.ipynb` notebooks; the public notebook flow is now the CelebA `StabilityVAE + SiT-B + moe1` set below.
 - `vaes-jax-celeba-kaggle-moe1.ipynb` prepares the Kaggle CelebA dataset into `/kaggle/working/celeba256_imgfolder`, switches Stage 1 to `stage1.StabilityVAE`, Stage 2 to single-tower `stage2.models.SiT.SiT`, and inserts a `src_jax/build_source_gmm.py` pass before training. That flow still avoids the RAE decoder download and bootstrap identity stats file, but it now writes a learned-source Stage 2 config with `source.enabled=true`, `training.log_rae_latent_stats=true`, and `training.log_activation_stats=true`.
@@ -440,6 +441,10 @@ python3 src_jax/build_fid_stats.py \
   --batch-size 64 \
   --num-workers 8
 ```
+
+On JAX hosts such as Kaggle TPU, keep `--num-workers` modest (`0-8` is usually
+enough). The script now switches worker processes to the `spawn` start method
+when `num_workers > 0`, which avoids the usual JAX + `fork()` warning.
 
 The JAX adapter accepts either a backend-native `.pkl`/`.pickle` file from
 `src_jax/build_fid_stats.py` or an older `.npz` file. When given `.npz`, the
