@@ -195,6 +195,7 @@ Kaggle and keeps metric logging on stdout plus wandb.
 Useful additions:
 
 - `--set training.global_batch_size=256`: override YAML values from the CLI
+- `--wandb-run-id <existing_run_id>`: bind a legacy JAX resume workdir to the exact historical W&B run once, then persist that binding inside the workdir
 - `--hf-repo-id <user>/<repo>`: upload the finished workdir to Hugging Face
 - `--workdir <path>`: force an explicit output directory instead of letting the
   adapter derive one from `--results-dir`
@@ -205,6 +206,16 @@ Resume / initialize behavior:
   into the NNX model for initialization.
 - If `stage_2.ckpt` points to an Orbax directory from a previous JAX run, the
   adapter restores that JAX checkpoint instead.
+- When `--wandb` is enabled, a fresh JAX workdir writes `wandb_run.json` and
+  starts with a fresh W&B run ID plus `resume="never"`.
+- Later resumes of the same JAX workdir read `wandb_run.json`, keep that exact
+  W&B run ID, and auto-rewind W&B history to the latest `checkpoint_*` step via
+  `resume_from`, so post-checkpoint logs from a crashed session do not survive
+  into the resumed history.
+- If a legacy Orbax workdir already has checkpoints but predates
+  `wandb_run.json`, pass `--wandb-run-id <existing_run_id>` once so the
+  adapter can persist the exact historical run binding before training
+  continues.
 
 ## 5. Enable wandb Logging
 
@@ -221,6 +232,10 @@ Then add `--wandb` to `src/train.py`.
 The same environment variables are also honored by `src_jax/train.py`. The JAX
 adapter bridges the legacy `ENTITY`, `PROJECT`, and `WANDB_KEY` names into the
 `WANDB_*` names expected by the NNX backend.
+On the JAX path, `wandb_run.json` inside the workdir is now the source of truth
+for exact resume behavior. A later launch must match that stored binding, and
+the adapter rewinds the W&B run to the latest checkpoint step before logging
+continues.
 
 Current Stage 2 namespaces:
 
@@ -472,7 +487,9 @@ the newest `CelebA256_SiTDH-B_DINOv2-B_jax_tpuv5e8-*` run directory under
 `/kaggle/working/results_jax_tpu/`, then both the shell pre-check and the
 runtime work from the newest `checkpoint_<step>` directory available under that
 workdir, so the notebook no longer hardcodes either the timestamped run folder
-or `checkpoint_100000`.
+or `checkpoint_100000`. If the target workdir was created before
+`wandb_run.json` existed, pass `--wandb-run-id <existing_run_id>` once so the
+resumed Kaggle session binds to the exact old W&B run instead of aborting.
 
 ## 9. Upload a JAX Run to Hugging Face
 
