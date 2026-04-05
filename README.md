@@ -36,7 +36,7 @@ Use the docs folder as the detailed guide for this branch:
 - [pdf/main.pdf](pdf/main.pdf): detailed Vietnamese PDF for architecture, workflow, config, and operations
 - [vaes-jax-celeba-kaggle-moe1.ipynb](vaes-jax-celeba-kaggle-moe1.ipynb): Kaggle notebook for the backend-native `StabilityVAE + SiT-B + moe1` CelebA flow, including offline `src_jax/build_source_gmm.py` and a generated Stage 2 config with `source.enabled=true`, `training.log_rae_latent_stats=true`, and `training.log_activation_stats=true`
 - [vaes-jax-celeba-kaggle-tpuv5e8-sitb-moe1.ipynb](vaes-jax-celeba-kaggle-tpuv5e8-sitb-moe1.ipynb): `TPU v5e-8` notebook for `StabilityVAE + SiT-B + moe1`, using `stage1.StabilityVAE`, `stage2.models.SiT.SiT`, `training.random_flip=true`, and default `num_workers=16`, `prefetch_factor=4`, `log_rae_latent_stats=true`, `log_activation_stats=true`
-- [vaes-jax-celeba-kaggle-tpuv5e8-sitb-moe1-resume.ipynb](vaes-jax-celeba-kaggle-tpuv5e8-sitb-moe1-resume.ipynb): resume-only `TPU v5e-8` notebook for the timestamped `CelebA256_SiT-B_StabilityVAE_moe1_jax_tpuv5e8-*` Orbax runs
+- [vaes-jax-celeba-kaggle-tpuv5e8-sitb-moe1-resume.ipynb](vaes-jax-celeba-kaggle-tpuv5e8-sitb-moe1-resume.ipynb): resume-only `TPU v5e-8` notebook for the timestamped `CelebA256_SiT-B_StabilityVAE_moe1_jax_tpuv5e8-*` Orbax runs, with strict W&B reuse once the workdir has `wandb_run.json` or you bind a legacy run with `--wandb-run-id`
 
 ## Environment
 
@@ -231,6 +231,16 @@ export WANDB_KEY=<wandb_api_key>
 
 and add `--wandb` to the training command.
 
+On the JAX path, each workdir now persists a `wandb_run.json` binding file.
+Fresh workdirs create a fresh W&B run ID and start with `resume="never"`.
+Later resumes of the same workdir reuse that exact run ID and automatically
+rewind W&B history to the latest `checkpoint_*` step with `resume_from`, so the
+run continues from the checkpoint instead of keeping stale post-checkpoint
+history such as `120k -> 150k` after a crash. If you resume an older Orbax
+workdir that predates `wandb_run.json`, pass `--wandb-run-id <existing_run_id>`
+once so the adapter can bind that legacy workdir to the exact historical W&B
+run before continuing.
+
 Stage 2 training now logs the following namespaces:
 
 - `train/*`: loss, learning rate, optimizer steps/sec, images/sec, epoch, and gradient norm when clipping is enabled.
@@ -296,6 +306,15 @@ pool. This keeps the backend PyTorch loader compatible with
 runtime state, while still letting the host queue several ready batches ahead
 of the TPU. The adapter also disables the backend TensorBoard summary writer on
 Kaggle and keeps metric logging on stdout plus wandb.
+
+When `--wandb` is enabled on `src_jax/train.py`, the adapter also writes a
+`wandb_run.json` file inside the selected workdir. That file is now the source
+of truth for exact W&B resume behavior on later launches. When checkpoints
+exist, later launches now auto-rewind the bound W&B run to the latest
+checkpoint step before logging continues. If you point `--workdir` at a legacy
+Orbax directory with checkpoints but no `wandb_run.json`, pass
+`--wandb-run-id <existing_run_id>` once; otherwise the adapter aborts instead
+of creating a fresh W&B run by accident.
 
 ```bash
 python3 src_jax/sample.py \
@@ -367,7 +386,8 @@ Key behavior:
 - the branch no longer keeps dedicated `raes-jax-celebahq*.ipynb` notebooks; the public notebook flow is now the CelebA `StabilityVAE + SiT-B + moe1` set below.
 - `vaes-jax-celeba-kaggle-moe1.ipynb` prepares the Kaggle CelebA dataset into `/kaggle/working/celeba256_imgfolder`, switches Stage 1 to `stage1.StabilityVAE`, Stage 2 to single-tower `stage2.models.SiT.SiT`, and inserts a `src_jax/build_source_gmm.py` pass before training. That flow still avoids the RAE decoder download and bootstrap identity stats file, but it now writes a learned-source Stage 2 config with `source.enabled=true`, `training.log_rae_latent_stats=true`, and `training.log_activation_stats=true`.
 - `vaes-jax-celeba-kaggle-tpuv5e8-sitb-moe1.ipynb` is the `TPU v5e-8` sibling for that VAE flow, writing `CelebA256_SiT-B_StabilityVAE_moe1_jax_tpuv5e8.yaml`, enabling `training.random_flip=true`, and keeping the DiT-B-style `SiT-B` shape (`hidden_size=768`, `depth=12`, `num_heads=12`, `patch_size=2`) referenced from the `shortcut-models` CelebA example while still training with this repo's flow-matching objective. The generated Stage 2 config also enables `training.log_rae_latent_stats=true` and `training.log_activation_stats=true` by default.
-- `vaes-jax-celeba-kaggle-tpuv5e8-sitb-moe1-resume.ipynb` mirrors the resume-only Kaggle TPU pattern for the latest `CelebA256_SiT-B_StabilityVAE_moe1_jax_tpuv5e8-*` Orbax workdir, and its final train cell also re-applies `training.log_rae_latent_stats=true` plus `training.log_activation_stats=true` from the CLI so resumed runs keep those diagnostics on by default.
+- `src_jax/train.py` now binds each JAX workdir to a persisted `wandb_run.json`; resume reuses that exact W&B run ID and auto-rewinds the W&B history to the latest Orbax checkpoint step, while legacy workdirs without metadata require a one-time `--wandb-run-id <existing_run_id>`.
+- `vaes-jax-celeba-kaggle-tpuv5e8-sitb-moe1-resume.ipynb` mirrors the resume-only Kaggle TPU pattern for the latest `CelebA256_SiT-B_StabilityVAE_moe1_jax_tpuv5e8-*` Orbax workdir, re-applies `training.log_rae_latent_stats=true` plus `training.log_activation_stats=true` from the CLI so resumed runs keep those diagnostics on by default, and now expects either the persisted `wandb_run.json` binding file or a one-time `--wandb-run-id <existing_run_id>` for legacy workdirs.
 - The CelebA VAE notebooks keep `eval.data_path` on `/kaggle/working/celeba256_imgfolder/val`; the GPU train cell points `--data-path` at `/kaggle/working/celeba256_imgfolder/train`, while the TPU variants keep `--data-path /kaggle/working/celeba256_imgfolder` and default to `training.num_workers=16`, `eval.num_workers=16`, `training.prefetch_factor=4`, and `eval.prefetch_factor=4`.
 
 Current limitation:
