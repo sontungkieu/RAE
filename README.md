@@ -36,7 +36,7 @@ Use the docs folder as the detailed guide for this branch:
 - [pdf/main.pdf](pdf/main.pdf): detailed Vietnamese PDF for architecture, workflow, config, and operations
 - [vaes-jax-celeba-kaggle.ipynb](vaes-jax-celeba-kaggle.ipynb): Kaggle notebook for the backend-native `StabilityVAE + SiT-B` CelebA flow, matching the `jax-sit-dh` dataset preparation path by building `celeba256_imgfolder` from Kaggle's `jessicali9530/celeba-dataset`
 - [vaes-jax-celeba-kaggle-tpuv5e8-sitb.ipynb](vaes-jax-celeba-kaggle-tpuv5e8-sitb.ipynb): `TPU v5e-8` notebook for `StabilityVAE + SiT-B`, using `stage1.StabilityVAE`, `stage2.models.SiT.SiT`, default `num_workers=16`, `prefetch_factor=(4,4)`, enabled latent/activation diagnostics, and the single-tower `SiT-B` CelebA recipe (`hidden_size=768`, `depth=12`, `num_heads=12`)
-- [vaes-jax-celeba-kaggle-tpuv5e8-sitb-resume.ipynb](vaes-jax-celeba-kaggle-tpuv5e8-sitb-resume.ipynb): resume-only `TPU v5e-8` notebook for the timestamped `CelebA256_SiT-B_StabilityVAE_jax_tpuv5e8-*` Orbax runs
+- [vaes-jax-celeba-kaggle-tpuv5e8-sitb-resume.ipynb](vaes-jax-celeba-kaggle-tpuv5e8-sitb-resume.ipynb): resume-only `TPU v5e-8` notebook for the timestamped `CelebA256_SiT-B_StabilityVAE_jax_tpuv5e8-*` Orbax runs, with strict W&B reuse once the workdir has `wandb_run.json` or you bind a legacy run with `--wandb-run-id`
 
 ## Environment
 
@@ -231,6 +231,16 @@ export WANDB_KEY=<wandb_api_key>
 
 and add `--wandb` to the training command.
 
+On the JAX path, each workdir now persists a `wandb_run.json` binding file.
+Fresh workdirs create a fresh W&B run ID and start with `resume="never"`.
+Later resumes of the same workdir reuse that exact run ID and automatically
+rewind W&B history to the latest `checkpoint_*` step with `resume_from`, so the
+run continues from the checkpoint instead of keeping stale post-checkpoint
+history such as `120k -> 150k` after a crash. If you resume an older Orbax
+workdir that predates `wandb_run.json`, pass `--wandb-run-id <existing_run_id>`
+once so the adapter can bind that legacy workdir to the exact historical W&B
+run before continuing.
+
 Stage 2 training now logs the following namespaces:
 
 - `train/*`: loss, learning rate, optimizer steps/sec, images/sec, epoch, and gradient norm when clipping is enabled.
@@ -300,6 +310,15 @@ exception: they pin both train and eval loaders to `num_workers=16` with
 `prefetch_factor=4`. The adapter also disables the backend TensorBoard summary
 writer on Kaggle and keeps metric logging on stdout plus wandb.
 
+When `--wandb` is enabled on `src_jax/train.py`, the adapter also writes a
+`wandb_run.json` file inside the selected workdir. That file is now the source
+of truth for exact W&B resume behavior on later launches. When checkpoints
+exist, later launches now auto-rewind the bound W&B run to the latest
+checkpoint step before logging continues. If you point `--workdir` at a legacy
+Orbax directory with checkpoints but no `wandb_run.json`, pass
+`--wandb-run-id <existing_run_id>` once; otherwise the adapter aborts instead
+of creating a fresh W&B run by accident.
+
 ```bash
 python3 src_jax/sample.py \
   --config configs/stage2/sampling/ImageNet256/SiTDHXL-DINOv2-B_AG.yaml \
@@ -364,10 +383,11 @@ Key behavior:
 - `training.log_rae_latent_stats=true` keeps the existing `train_rae_latent_*` metric names, but now covers whichever Stage 1 latent tensor the JAX path actually feeds into Stage 2, including `StabilityVAE`.
 - `training.log_activation_stats=true` logs RMS and variance for the selected Stage 2 backbone: `train_sitdh_*` for DH/two-tower runs and `train_sit_*` for single-tower `SiT` runs.
 - `training.prefetch_factor` and `eval.prefetch_factor` now forward directly into the host-side PyTorch `DataLoader` used by the JAX Stage 2 path, so you can deepen the per-worker prefetch queue without editing the cached backend checkout by hand.
+- `src_jax/train.py` now binds each JAX workdir to a persisted `wandb_run.json`; resume reuses that exact W&B run ID and auto-rewinds the W&B history to the latest Orbax checkpoint step, while legacy workdirs without metadata require a one-time `--wandb-run-id <existing_run_id>`.
 - the branch now keeps the public CelebA notebook flow below, with dataset preparation aligned to `jax-sit-dh`.
 - `vaes-jax-celeba-kaggle.ipynb` builds `celeba256_imgfolder` from Kaggle's `jessicali9530/celeba-dataset`, switches Stage 1 to `stage1.StabilityVAE`, Stage 2 to single-tower `stage2.models.SiT.SiT`, and avoids both the RAE decoder download and the bootstrap latent-stat pass.
 - `vaes-jax-celeba-kaggle-tpuv5e8-sitb.ipynb` is the `TPU v5e-8` sibling for that VAE flow, writing `CelebA256_SiT-B_StabilityVAE_jax_tpuv5e8.yaml`, enabling `training.random_flip=true`, `training.log_rae_latent_stats=true`, and `training.log_activation_stats=true`, defaulting both train and eval to `num_workers=16` with `prefetch_factor=4`, and keeping the DiT-B-style `SiT-B` shape (`hidden_size=768`, `depth=12`, `num_heads=12`, `patch_size=2`) referenced from the `shortcut-models` CelebA example while still training with this repo's flow-matching `sit` objective.
-- `vaes-jax-celeba-kaggle-tpuv5e8-sitb-resume.ipynb` mirrors the resume-only Kaggle TPU pattern for the latest `CelebA256_SiT-B_StabilityVAE_jax_tpuv5e8-*` Orbax workdir and re-applies the same `num_workers=16`, `prefetch_factor=4`, latent RMS/variance, and activation RMS/variance settings from the CLI during resume.
+- `vaes-jax-celeba-kaggle-tpuv5e8-sitb-resume.ipynb` mirrors the resume-only Kaggle TPU pattern for the latest `CelebA256_SiT-B_StabilityVAE_jax_tpuv5e8-*` Orbax workdir, re-applies the same `num_workers=16`, `prefetch_factor=4`, latent RMS/variance, and activation RMS/variance settings from the CLI during resume, and now expects either the persisted `wandb_run.json` binding file or a one-time `--wandb-run-id <existing_run_id>` for legacy workdirs.
 - The VAE CelebA notebooks materialize `/kaggle/working/celeba256_imgfolder`, keep `eval.data_path` on the `val` split, use `/kaggle/working/celeba256_imgfolder/train` as the non-TPU train path, and keep both train and eval host loaders at `num_workers=16` with `prefetch_factor=4` while leaving latent/output/activation diagnostics enabled by default.
 
 Current limitation:
