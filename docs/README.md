@@ -11,7 +11,7 @@ and the lightweight JAX/NNX adapter shipped in `src_jax/`.
 - [PDF Manual](../pdf/main.pdf): detailed Vietnamese PDF for architecture, workflows, config, and operations.
 - [Kaggle Notebook (StabilityVAE + SiT-B + moe1)](../vaes-jax-celebahq-kaggle-moe1.ipynb): end-to-end CelebA-HQ notebook for the backend-native VAE flow with an offline `GMM + SourceMoE` source build step.
 - [Kaggle TPU Notebook (StabilityVAE + SiT-B + moe1)](../vaes-jax-celebahq-kaggle-tpuv5e8-sitb-moe1.ipynb): `TPU v5e-8` notebook that uses `stage1.StabilityVAE`, single-tower `stage2.models.SiT.SiT`, `training.random_flip=true`, and a generated Stage 2 config with `source.enabled=true`.
-- [Kaggle TPU Notebook (StabilityVAE + SiT-B + moe1 Resume)](../vaes-jax-celebahq-kaggle-tpuv5e8-sitb-moe1-resume.ipynb): resume-only `TPU v5e-8` notebook for the newest `CelebAHQ256_SiT-B_StabilityVAE_moe1_jax_tpuv5e8-*` workdir.
+- [Kaggle TPU Notebook (StabilityVAE + SiT-B + moe1 Resume)](../vaes-jax-celebahq-kaggle-tpuv5e8-sitb-moe1-resume.ipynb): resume-only `TPU v5e-8` notebook for the newest `CelebAHQ256_SiT-B_StabilityVAE_moe1_jax_tpuv5e8-*` workdir, with strict W&B reuse plus automatic rewind to the latest checkpoint once the workdir has `wandb_run.json` or a one-time `--wandb-run-id` bind for legacy runs.
 
 ## Recommended Reading Order
 
