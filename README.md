@@ -36,7 +36,7 @@ Use the docs folder as the detailed guide for this branch:
 - [raes-jax-celebahq-kaggle-moe1.ipynb](raes-jax-celebahq-kaggle-moe1.ipynb): Kaggle notebook for the CelebA-HQ JAX `RAE + SiTDH-S + moe1` flow, including the offline `src_jax/build_source_gmm.py` step and a generated Stage 2 config with `source.enabled=true`
 - [raes-jax-celebahq-kaggle-tpuv5e8-sitdh-s-moe1.ipynb](raes-jax-celebahq-kaggle-tpuv5e8-sitdh-s-moe1.ipynb): Kaggle `TPU v5e-8` notebook for the `SiTDH-S + moe1` CelebA-HQ variant, keeping host-side CPU FID, applying the automatic `jaxlib` executable-stack fix, and generating the learned-source Stage 2 config `CelebAHQ256_SiTDH-S_DINOv2-B_moe1_jax_tpuv5e8.yaml`
 - [raes-jax-celebahq-kaggle-tpuv5e8-sitdh-b-moe1.ipynb](raes-jax-celebahq-kaggle-tpuv5e8-sitdh-b-moe1.ipynb): sibling Kaggle `TPU v5e-8` notebook for the DH/two-tower `SiTDH-B + moe1` recipe, using `hidden_size=[768, 2048]`, `depth=[12, 2]`, `num_heads=[12, 16]`, `use_pos_embed=true`, and the same offline GMM build step before training
-- [raes-jax-celebahq-kaggle-tpuv5e8-sitdh-b-moe1-resume.ipynb](raes-jax-celebahq-kaggle-tpuv5e8-sitdh-b-moe1-resume.ipynb): minimal `TPU v5e-8` resume-only notebook for the `SiTDH-B + moe1` variant, auto-detecting the newest `CelebAHQ256_SiTDH-B_DINOv2-B_moe1_jax_tpuv5e8-*` Orbax run and requiring the persisted `celebahq256_source_gmm.npz` artifact
+- [raes-jax-celebahq-kaggle-tpuv5e8-sitdh-b-moe1-resume.ipynb](raes-jax-celebahq-kaggle-tpuv5e8-sitdh-b-moe1-resume.ipynb): minimal `TPU v5e-8` resume-only notebook for the `SiTDH-B + moe1` variant, auto-detecting the newest `CelebAHQ256_SiTDH-B_DINOv2-B_moe1_jax_tpuv5e8-*` Orbax run and requiring the persisted `celebahq256_source_gmm.npz` artifact, with strict W&B reuse once the workdir has `wandb_run.json` or you bind a legacy run with `--wandb-run-id`
 
 ## Environment
 
@@ -226,6 +226,16 @@ export WANDB_KEY=<wandb_api_key>
 
 and add `--wandb` to the training command.
 
+On the JAX path, each workdir now persists a `wandb_run.json` binding file.
+Fresh workdirs create a fresh W&B run ID and start with `resume="never"`.
+Later resumes of the same workdir reuse that exact run ID and automatically
+rewind W&B history to the latest `checkpoint_*` step with `resume_from`, so the
+run continues from the checkpoint instead of keeping stale post-checkpoint
+history such as `120k -> 150k` after a crash. If you resume an older Orbax
+workdir that predates `wandb_run.json`, pass `--wandb-run-id <existing_run_id>`
+once so the adapter can bind that legacy workdir to the exact historical W&B
+run before continuing.
+
 Stage 2 training now logs the following namespaces:
 
 - `train/*`: loss, learning rate, optimizer steps/sec, images/sec, epoch, and gradient norm when clipping is enabled.
@@ -292,6 +302,15 @@ runtime state, while still letting the host queue several ready batches ahead
 of the TPU. The adapter also disables the backend TensorBoard summary writer on
 Kaggle and keeps metric logging on stdout plus wandb.
 
+When `--wandb` is enabled on `src_jax/train.py`, the adapter also writes a
+`wandb_run.json` file inside the selected workdir. That file is now the source
+of truth for exact W&B resume behavior on later launches. When checkpoints
+exist, later launches now auto-rewind the bound W&B run to the latest
+checkpoint step before logging continues. If you point `--workdir` at a legacy
+Orbax directory with checkpoints but no `wandb_run.json`, pass
+`--wandb-run-id <existing_run_id>` once; otherwise the adapter aborts instead
+of creating a fresh W&B run by accident.
+
 ```bash
 python3 src_jax/sample.py \
   --config configs/stage2/sampling/ImageNet256/SiTDHXL-DINOv2-B_AG.yaml \
@@ -355,10 +374,11 @@ Key behavior:
 - `training.log_rae_latent_stats=true` makes the JAX train loop log RMS and variance of the Stage 1 RAE latents actually consumed by Stage 2, while `training.log_activation_stats=true` logs RMS and variance for the SiTDH output and each encoder/decoder activation block.
 - `training.prefetch_factor` and `eval.prefetch_factor` now forward directly into the host-side PyTorch `DataLoader` used by the JAX Stage 2 path, so you can deepen the per-worker prefetch queue without editing the cached backend checkout by hand.
 - `training.random_flip` and `eval.random_flip` now control the raw-image transform on the JAX Stage 2 path; CelebA-HQ configs on this branch default training-time horizontal flips on, while eval/FID stays unflipped unless you opt in explicitly.
+- `src_jax/train.py` now binds each JAX workdir to a persisted `wandb_run.json`; resume reuses that exact W&B run ID and auto-rewinds the W&B history to the latest Orbax checkpoint step, while legacy workdirs without metadata require a one-time `--wandb-run-id <existing_run_id>`.
 - `raes-jax-celebahq-kaggle-moe1.ipynb` mirrors the standard Kaggle workflow end to end for CelebA-HQ, but now inserts `src_jax/build_source_gmm.py` between the validation FID build and the Stage 2 train cell, then writes a learned-source Stage 2 config `CelebAHQ256_SiTDH-S_DINOv2-B_moe1_jax.yaml`.
 - `raes-jax-celebahq-kaggle-tpuv5e8-sitdh-s-moe1.ipynb` copies that flow for `TPU v5e-8`, fixes Stage 2 to `SiTDH-S`, clears the `jaxlib` executable-stack flag that Kaggle can reject, builds the JAX `fid_ref`, builds `celebahq256_source_gmm.npz`, and trains with the learned source prior instead of pure Gaussian initialization. On this DH branch the notebook keeps `src_jax/build_fid_stats.py --num-workers 32` as the default host setting.
 - `raes-jax-celebahq-kaggle-tpuv5e8-sitdh-b-moe1.ipynb` is the `TPU v5e-8` sibling notebook for the DH/two-tower `SiTDH-B + moe1` recipe, reusing the same Kaggle/JAX flow while writing `CelebAHQ256_SiTDH-B_DINOv2-B_moe1_jax_tpuv5e8.yaml`, setting `hidden_size=[768, 2048]`, `depth=[12, 2]`, and `num_heads=[12, 16]`, and building the GMM artifact before training. This notebook also keeps `src_jax/build_fid_stats.py --num-workers 32` by default.
-- `raes-jax-celebahq-kaggle-tpuv5e8-sitdh-b-moe1-resume.ipynb` is the resume-only notebook for the `SiTDH-B + moe1` variant: it still restores the archived workdir, but now also checks that `celebahq256_source_gmm.npz` is present and resumes the newest `CelebAHQ256_SiTDH-B_DINOv2-B_moe1_jax_tpuv5e8-*` run.
+- `raes-jax-celebahq-kaggle-tpuv5e8-sitdh-b-moe1-resume.ipynb` is the resume-only notebook for the `SiTDH-B + moe1` variant: it still restores the archived workdir, checks that `celebahq256_source_gmm.npz` is present, resumes the newest `CelebAHQ256_SiTDH-B_DINOv2-B_moe1_jax_tpuv5e8-*` run, and now expects either the persisted `wandb_run.json` binding file or a one-time `--wandb-run-id <existing_run_id>` for legacy workdirs.
 - In the CelebA-HQ `moe1` notebooks, the final Stage 2 train/resume cells point `--data-path` at `/kaggle/working/celebahq256_imgfolder`, keep `eval.data_path` on the exported `val` split, enable `training.random_flip=true`, keep `eval.random_flip=false`, enable `training.log_rae_latent_stats=true` plus `training.log_activation_stats=true` by default, and set `RAE_JAX_REBUILD_BACKEND=1` so the backend overlay reliably picks up the new `sit_gmm_moe1` interface on fresh Kaggle sessions.
 
 Current limitation:
