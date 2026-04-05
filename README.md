@@ -36,7 +36,7 @@ Use the docs folder as the detailed guide for this branch:
 - [pdf/main.pdf](pdf/main.pdf): detailed Vietnamese PDF for architecture, workflow, config, and operations
 - [vaes-jax-celebahq-kaggle.ipynb](vaes-jax-celebahq-kaggle.ipynb): Kaggle notebook for the backend-native `StabilityVAE + SiT-B` CelebA-HQ flow, keeping the same Hugging Face export-to-ImageFolder step but skipping the RAE decoder download and Stage 1 latent-stat bootstrap work entirely
 - [vaes-jax-celebahq-kaggle-tpuv5e8-sitb.ipynb](vaes-jax-celebahq-kaggle-tpuv5e8-sitb.ipynb): `TPU v5e-8` notebook for `StabilityVAE + SiT-B`, using `stage1.StabilityVAE`, `stage2.models.SiT.SiT`, `training.random_flip=true`, and the single-tower `SiT-B` CelebA-HQ recipe (`hidden_size=768`, `depth=12`, `num_heads=12`)
-- [vaes-jax-celebahq-kaggle-tpuv5e8-sitb-resume.ipynb](vaes-jax-celebahq-kaggle-tpuv5e8-sitb-resume.ipynb): resume-only `TPU v5e-8` notebook for the timestamped `CelebAHQ256_SiT-B_StabilityVAE_jax_tpuv5e8-*` Orbax runs
+- [vaes-jax-celebahq-kaggle-tpuv5e8-sitb-resume.ipynb](vaes-jax-celebahq-kaggle-tpuv5e8-sitb-resume.ipynb): resume-only `TPU v5e-8` notebook for the timestamped `CelebAHQ256_SiT-B_StabilityVAE_jax_tpuv5e8-*` Orbax runs, with strict W&B reuse once the workdir has `wandb_run.json` or you bind a legacy run with `--wandb-run-id`
 
 ## Environment
 
@@ -297,6 +297,16 @@ runtime state, while still letting the host queue several ready batches ahead
 of the TPU. The adapter also disables the backend TensorBoard summary writer on
 Kaggle and keeps metric logging on stdout plus wandb.
 
+When `--wandb` is enabled on `src_jax/train.py`, the adapter now writes a
+`wandb_run.json` file inside the selected workdir. Fresh workdirs start with a
+fresh W&B run ID and `resume="never"`. Later resumes of the same workdir reuse
+that exact run binding and auto-rewind W&B history to the latest
+`checkpoint_*` step before logging continues, so stale post-checkpoint metrics
+from a crashed session do not survive into the resumed run. If you point
+`--workdir` at a legacy Orbax directory with checkpoints but no
+`wandb_run.json`, pass `--wandb-run-id <existing_run_id>` once; otherwise the
+adapter aborts instead of creating a fresh W&B run by accident.
+
 ```bash
 python3 src_jax/sample.py \
   --config configs/stage2/sampling/ImageNet256/SiTDHXL-DINOv2-B_AG.yaml \
@@ -365,7 +375,7 @@ Key behavior:
 - the branch no longer keeps dedicated `raes-jax-celebahq*.ipynb` notebooks; the public CelebA-HQ notebook flow is now the `StabilityVAE + SiT-B` set below.
 - `vaes-jax-celebahq-kaggle.ipynb` keeps the same Hugging Face export flow but switches Stage 1 to `stage1.StabilityVAE` and Stage 2 to single-tower `stage2.models.SiT.SiT`, so there is no RAE decoder download, no bootstrap identity stats file, and no required latent-stat preprocessing pass before training.
 - `vaes-jax-celebahq-kaggle-tpuv5e8-sitb.ipynb` is the `TPU v5e-8` sibling for that VAE flow, writing `CelebAHQ256_SiT-B_StabilityVAE_jax_tpuv5e8.yaml`, enabling `training.random_flip=true`, and keeping the DiT-B-style `SiT-B` shape (`hidden_size=768`, `depth=12`, `num_heads=12`, `patch_size=2`) referenced from the `shortcut-models` CelebA example while still training with this repo's flow-matching `sit` objective.
-- `vaes-jax-celebahq-kaggle-tpuv5e8-sitb-resume.ipynb` mirrors the resume-only Kaggle TPU pattern for the latest `CelebAHQ256_SiT-B_StabilityVAE_jax_tpuv5e8-*` Orbax workdir.
+- `vaes-jax-celebahq-kaggle-tpuv5e8-sitb-resume.ipynb` mirrors the resume-only Kaggle TPU pattern for the latest `CelebAHQ256_SiT-B_StabilityVAE_jax_tpuv5e8-*` Orbax workdir, and now expects either the persisted `wandb_run.json` binding file or a one-time `--wandb-run-id <existing_run_id>` for legacy workdirs.
 - The VAE CelebA-HQ notebooks point `--data-path` at `/kaggle/working/celebahq256_imgfolder`, keep `eval.data_path` on the exported `val` split, and use the same `training.prefetch_factor=8` plus `eval.prefetch_factor=4` pattern on the TPU variants so the host loader can queue batches more aggressively.
 
 Current limitation:
