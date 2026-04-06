@@ -319,14 +319,14 @@ và resize về \texttt{256x256}, rồi materialize dữ liệu thành
 \texttt{training.log\_activation\_stats=true}, và export
 \texttt{RAE\_JAX\_REBUILD\_BACKEND=1} để backend overlay luôn recopy interface
 \texttt{sit\_gmm\_moe1} trong session Kaggle mới. Script
-\texttt{src\_jax/build\_source\_gmm.py} trên branch này cũng mặc định dùng
-\texttt{feature\_extractor=auto}; với latent RAE \texttt{16 x 16 x 768}, nó sẽ
-chọn \texttt{pyramid\_16k}, tức pool/proj latent về \texttt{4 x 4 x 1024} rồi
-flatten thành \texttt{16384} chiều trước khi fit GMM. Trên máy RAM lớn có thể
-ép \texttt{flatten}; builder giờ preallocate đúng một ma trận
-\texttt{N x D} \texttt{float32} và standardize in-place, nên full latent vector
-không còn cần memmap trên đĩa chỉ để né thêm bản copy RAM. Nếu máy không đủ
-RAM thì mới ép xuống \texttt{spatial\_mean} làm fallback tiết kiệm bộ nhớ.
+\texttt{src\_jax/build\_source\_gmm.py} trên branch này giờ mặc định dùng
+\texttt{feature\_extractor=flatten}; với latent RAE \texttt{16 x 16 x 768}, nó
+giữ luôn vector đầy đủ \texttt{196608} chiều khi fit GMM. Builder vẫn đi theo
+đường low-copy: preallocate đúng một ma trận \texttt{N x D} \texttt{float32}
+và standardize in-place, nên full latent vector không còn cần memmap trên đĩa
+chỉ để né thêm bản copy RAM. Nếu muốn bản nén có cấu trúc hơn thì vẫn có thể
+ép \texttt{pyramid\_16k}; \texttt{spatial\_mean} tiếp tục là fallback tiết kiệm
+bộ nhớ khi máy không đủ RAM.
 
 Nếu chạy trên Kaggle \texttt{TPU v5e-8}, dùng notebook
 \texttt{raes-jax-celeba-kaggle-tpuv5e8-sitdh-b-moe1.ipynb}. Bản này cố định biến thể

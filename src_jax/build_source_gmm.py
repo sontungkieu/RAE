@@ -55,11 +55,12 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--feature-extractor",
         choices=["auto", "flatten", "spatial_mean", "pyramid_16k"],
-        default="auto",
+        default="flatten",
         help=(
             "How to convert NHWC latents into GMM features. "
-            "'auto' picks pyramid_16k for very large RAE latents; use flatten on high-RAM hosts when you want the full latent vector, "
-            "or spatial_mean only as a low-RAM fallback."
+            "The default keeps the full flattened latent vector while using the low-copy builder path; "
+            "use 'pyramid_16k' for a structured compressed feature, 'auto' for the legacy heuristic, "
+            "or 'spatial_mean' only as a low-RAM fallback."
         ),
     )
     parser.add_argument("--set", dest="set_values", action="append", default=[], help="OmegaConf override.")
