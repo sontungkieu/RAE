@@ -375,6 +375,7 @@ Key behavior:
 - `--set key=value` applies OmegaConf CLI overrides without adding a second config format.
 - `src_jax/build_stage1_stats.py` writes a PyTorch-compatible `stat.pt` file, so the same Stage 1 normalization stats can be reused by both the original repo code and the JAX adapter.
 - the Stage 1-only JAX utilities (`src_jax/stage1_sample.py`, `src_jax/build_stage1_stats.py`, and `src_jax/reconstruct_folder.py`) can run with a YAML that only defines `stage_1`; they do not require `stage_2.target`.
+- the shipped TPU notebooks on this branch now default `export PROJECT="moe-diffusion"`; the existing `run_name` strings already encode the dataset, `StabilityVAE`, backbone, and TPU pipeline, so no extra suffix was added to the experiment name.
 - `src_jax/export_celebahq_hf.py` and `src_jax/export_celebahq_tfds.py` remain available if you specifically want a CelebA-HQ `ImageFolder` export, but the public VAE notebooks on this branch now mirror `jax-sit-dh` and build `celeba256_imgfolder` directly from Kaggle's `jessicali9530/celeba-dataset`.
 - for dataset-specific Stage 1 stats, start from a bootstrap identity stats file (`mean=0`, `var=1`) and override `stage_1.params.normalization_stat_path` during the stats pass.
 - `training.random_flip` and `eval.random_flip` now control the raw-image transform on the JAX Stage 2 path; the public CelebA notebooks on this branch enable training-time horizontal flips while keeping eval/FID unflipped.

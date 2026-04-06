@@ -531,6 +531,7 @@ as the CelebA notebooks: `training.num_workers=16`,
 `training.prefetch_factor=4`, `eval.prefetch_factor=4`,
 `training.log_rae_latent_stats=true`, and
 `training.log_activation_stats=true`.
+The shipped TPU notebooks on this branch also now default `export PROJECT="moe-diffusion"`; the existing `run_name` strings already carry the dataset, `StabilityVAE`, backbone, and TPU pipeline identifiers, so they do not need an extra project-only suffix.
 
 ## 9. Upload a JAX Run to Hugging Face
 
