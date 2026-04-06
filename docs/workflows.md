@@ -525,6 +525,12 @@ diagnostics enabled by default. If the target workdir was created before
 `wandb_run.json` existed, pass `--wandb-run-id <existing_run_id>` once so the
 resumed Kaggle session binds to the exact old W&B run instead of aborting.
 
+The shipped CelebA `moe1` notebooks on this branch now pin the same Stage 2
+host-loader/diagnostic defaults across both Kaggle and TPU variants:
+`training.num_workers=16`, `training.prefetch_factor=4`,
+`eval.prefetch_factor=4`, `training.log_rae_latent_stats=true`, and
+`training.log_activation_stats=true`.
+
 The same branch also keeps the parallel CelebA-HQ `moe1` notebooks:
 [../vaes-jax-celebahq-kaggle-moe1.ipynb](../vaes-jax-celebahq-kaggle-moe1.ipynb),
 [../vaes-jax-celebahq-kaggle-tpuv5e8-sitb-moe1.ipynb](../vaes-jax-celebahq-kaggle-tpuv5e8-sitb-moe1.ipynb),
@@ -533,7 +539,11 @@ and
 They keep the same `StabilityVAE + SiT-B + moe1` recipe but export
 `/kaggle/working/celebahq256_imgfolder`, build `celebahq256_source_gmm.npz`,
 and resume the timestamped `CelebAHQ256_SiT-B_StabilityVAE_moe1_jax_tpuv5e8-*`
-workdirs instead of the CelebA ones.
+workdirs instead of the CelebA ones. They pin the same Stage 2
+host-loader/diagnostic defaults as the CelebA `moe1` notebooks:
+`training.num_workers=16`, `training.prefetch_factor=4`,
+`eval.prefetch_factor=4`, `training.log_rae_latent_stats=true`, and
+`training.log_activation_stats=true`.
 
 ## 9. Upload a JAX Run to Hugging Face
 
