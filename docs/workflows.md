@@ -519,6 +519,16 @@ workdir was created before `wandb_run.json` existed, pass
 `--wandb-run-id <existing_run_id>` once so the resumed Kaggle session binds to
 the exact old W&B run instead of aborting.
 
+The same branch also keeps parallel CelebA-HQ notebooks:
+[../vaes-jax-celebahq-kaggle.ipynb](../vaes-jax-celebahq-kaggle.ipynb),
+[../vaes-jax-celebahq-kaggle-tpuv5e8-sitb.ipynb](../vaes-jax-celebahq-kaggle-tpuv5e8-sitb.ipynb),
+and
+[../vaes-jax-celebahq-kaggle-tpuv5e8-sitb-resume.ipynb](../vaes-jax-celebahq-kaggle-tpuv5e8-sitb-resume.ipynb).
+Those notebooks keep the same `StabilityVAE + SiT-B` pipeline, but export the
+CelebA-HQ 256 dataset to `/kaggle/working/celebahq256_imgfolder` and resume the
+timestamped `CelebAHQ256_SiT-B_StabilityVAE_jax_tpuv5e8-*` workdirs instead of
+the CelebA ones.
+
 ## 9. Upload a JAX Run to Hugging Face
 
 Standalone upload:

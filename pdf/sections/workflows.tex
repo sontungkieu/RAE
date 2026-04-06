@@ -356,3 +356,12 @@ theo pattern resume-only của branch, nhưng tìm workdir mới nhất theo pat
 legacy run được tạo trước khi cơ chế \texttt{wandb\_run.json} tồn tại, cần thêm
 \texttt{--wandb-run-id <existing\_run\_id>} một lần để notebook resume đúng
 chính run W\&B cũ đó.
+
+Branch này cũng giữ song song bộ notebook CelebA-HQ:
+\texttt{vaes-jax-celebahq-kaggle.ipynb},
+\texttt{vaes-jax-celebahq-kaggle-tpuv5e8-sitb.ipynb}, và
+\texttt{vaes-jax-celebahq-kaggle-tpuv5e8-sitb-resume.ipynb}. Chúng dùng cùng
+pipeline \texttt{StabilityVAE + SiT-B}, nhưng export dữ liệu sang
+\texttt{/kaggle/working/celebahq256\_imgfolder} và resume theo pattern
+\texttt{CelebAHQ256\_SiT-B\_StabilityVAE\_jax\_tpuv5e8-*} thay vì flow CelebA
+thường.

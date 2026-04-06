@@ -12,6 +12,9 @@ and the lightweight JAX/NNX adapter shipped in `src_jax/`.
 - [Kaggle Notebook (StabilityVAE + SiT-B)](../vaes-jax-celeba-kaggle.ipynb): end-to-end CelebA notebook for the backend-native VAE flow, matching the CelebA `ImageFolder` preparation used on `jax-sit-dh`.
 - [Kaggle TPU Notebook (StabilityVAE + SiT-B)](../vaes-jax-celeba-kaggle-tpuv5e8-sitb.ipynb): `TPU v5e-8` notebook that uses `stage1.StabilityVAE`, single-tower `stage2.models.SiT.SiT`, default `num_workers=16`, `prefetch_factor=(4,4)`, `training.random_flip=true`, and default latent/activation diagnostics on the CelebA `SiT-B` recipe.
 - [Kaggle TPU Notebook (StabilityVAE + SiT-B Resume)](../vaes-jax-celeba-kaggle-tpuv5e8-sitb-resume.ipynb): resume-only `TPU v5e-8` notebook for the newest `CelebA256_SiT-B_StabilityVAE_jax_tpuv5e8-*` workdir, reapplying the same `num_workers=16`, `prefetch_factor=(4,4)`, and diagnostics defaults, with strict W&B reuse plus automatic rewind to the latest checkpoint once the workdir has `wandb_run.json` or a one-time `--wandb-run-id` bind for legacy runs.
+- [Kaggle Notebook (StabilityVAE + SiT-B, CelebA-HQ)](../vaes-jax-celebahq-kaggle.ipynb): end-to-end CelebA-HQ notebook for the same backend-native VAE flow, using the Hugging Face export-to-ImageFolder path for the 256 dataset.
+- [Kaggle TPU Notebook (StabilityVAE + SiT-B, CelebA-HQ)](../vaes-jax-celebahq-kaggle-tpuv5e8-sitb.ipynb): `TPU v5e-8` notebook for the CelebA-HQ 256 variant of the single-tower `SiT-B` VAE flow.
+- [Kaggle TPU Notebook (StabilityVAE + SiT-B Resume, CelebA-HQ)](../vaes-jax-celebahq-kaggle-tpuv5e8-sitb-resume.ipynb): resume-only `TPU v5e-8` notebook for the newest `CelebAHQ256_SiT-B_StabilityVAE_jax_tpuv5e8-*` workdir with the same W&B rewind rules.
 
 ## Recommended Reading Order
 
