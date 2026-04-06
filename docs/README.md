@@ -13,6 +13,10 @@ and the lightweight JAX/NNX adapter shipped in `src_jax/`.
 - [Kaggle TPU Notebook (SiTDH-S)](../raes-jax-celeba-kaggle-tpuv5e8-sitdh-s.ipynb): CelebA notebook tuned for Kaggle `TPU v5e-8` for the `SiTDH-S` variant, also syncing repo dependencies into `/tmp/.venv` via `uv sync`, with an automatic `jaxlib` executable-stack fix, host-side CPU FID/stat work, and a default `210000`-step checkpoint cadence.
 - [Kaggle TPU Notebook (SiTDH-B)](../raes-jax-celeba-kaggle-tpuv5e8-sitdh-b.ipynb): sibling `TPU v5e-8` notebook that keeps the same `/tmp/.venv` + `uv sync` JAX/Kaggle flow but switches the CelebA Stage 2 recipe to the DH/two-tower `SiTDH-B` setup with `hidden_size=[768, 2048]`, `depth=[12, 2]`, `num_heads=[12, 16]`, `use_pos_embed=true`, and `class_dropout_prob=0.0`, while keeping the `210000`-step checkpoint cadence.
 - [Kaggle TPU Notebook (SiTDH-B Resume)](../raes-jax-celeba-kaggle-tpuv5e8-sitdh-b-resume.ipynb): minimal `TPU v5e-8` resume-only notebook that starts by unzipping the previous notebook `_output_.zip` back into `/kaggle/working`, then rebuilds only the `uv` environment and auto-detects the latest `CelebA256_SiTDH-B_DINOv2-B_jax_tpuv5e8-*` run plus its latest `checkpoint_<step>`, with strict W&B reuse plus automatic rewind to the latest checkpoint once the workdir has `wandb_run.json` or a one-time `--wandb-run-id` bind for legacy runs.
+- [Kaggle Notebook (CelebA-HQ)](../raes-jax-celebahq-kaggle.ipynb): end-to-end CelebA-HQ notebook for the same standard JAX branch flow.
+- [Kaggle TPU Notebook (SiTDH-S, CelebA-HQ)](../raes-jax-celebahq-kaggle-tpuv5e8-sitdh-s.ipynb): `TPU v5e-8` notebook for the CelebA-HQ `SiTDH-S` variant.
+- [Kaggle TPU Notebook (SiTDH-B, CelebA-HQ)](../raes-jax-celebahq-kaggle-tpuv5e8-sitdh-b.ipynb): `TPU v5e-8` notebook for the CelebA-HQ `SiTDH-B` variant.
+- [Kaggle TPU Notebook (SiTDH-B Resume, CelebA-HQ)](../raes-jax-celebahq-kaggle-tpuv5e8-sitdh-b-resume.ipynb): resume-only `TPU v5e-8` notebook for the newest `CelebAHQ256_SiTDH-B_DINOv2-B_jax_tpuv5e8-*` workdir.
 
 ## Recommended Reading Order
 

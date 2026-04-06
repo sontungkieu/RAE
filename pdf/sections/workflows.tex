@@ -339,3 +339,13 @@ workdir đích là legacy run được tạo trước khi cơ chế
 \texttt{wandb\_run.json} tồn tại, cần thêm
 \texttt{--wandb-run-id <existing\_run\_id>} một lần để notebook resume đúng
 chính run W\&B cũ đó.
+
+Branch này cũng giữ song song workflow CelebA-HQ:
+\texttt{raes-jax-celebahq-kaggle.ipynb},
+\texttt{raes-jax-celebahq-kaggle-tpuv5e8-sitdh-s.ipynb},
+\texttt{raes-jax-celebahq-kaggle-tpuv5e8-sitdh-b.ipynb}, và
+\texttt{raes-jax-celebahq-kaggle-tpuv5e8-sitdh-b-resume.ipynb}. Chúng dùng lại
+pipeline JAX/Kaggle tương tự nhưng export dữ liệu CelebA-HQ 256. Merge này
+cũng khôi phục hai helper export riêng là
+\texttt{src\_jax/export\_celebahq\_hf.py} và
+\texttt{src\_jax/export\_celebahq\_tfds.py}.

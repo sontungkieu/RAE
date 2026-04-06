@@ -491,6 +491,18 @@ or `checkpoint_100000`. If the target workdir was created before
 `wandb_run.json` existed, pass `--wandb-run-id <existing_run_id>` once so the
 resumed Kaggle session binds to the exact old W&B run instead of aborting.
 
+The same branch also keeps the parallel CelebA-HQ workflow:
+[../raes-jax-celebahq-kaggle.ipynb](../raes-jax-celebahq-kaggle.ipynb),
+[../raes-jax-celebahq-kaggle-tpuv5e8-sitdh-s.ipynb](../raes-jax-celebahq-kaggle-tpuv5e8-sitdh-s.ipynb),
+[../raes-jax-celebahq-kaggle-tpuv5e8-sitdh-b.ipynb](../raes-jax-celebahq-kaggle-tpuv5e8-sitdh-b.ipynb),
+and
+[../raes-jax-celebahq-kaggle-tpuv5e8-sitdh-b-resume.ipynb](../raes-jax-celebahq-kaggle-tpuv5e8-sitdh-b-resume.ipynb).
+Those notebooks reuse the same JAX/Kaggle flow for the CelebA-HQ 256 dataset.
+This merge also restores the dedicated export helpers
+[`src_jax/export_celebahq_hf.py`](../src_jax/export_celebahq_hf.py) and
+[`src_jax/export_celebahq_tfds.py`](../src_jax/export_celebahq_tfds.py), plus
+the regression test for the TFDS exporter.
+
 ## 9. Upload a JAX Run to Hugging Face
 
 Standalone upload:

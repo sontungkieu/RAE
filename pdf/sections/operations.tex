@@ -151,6 +151,14 @@ python3 src_jax/train.py \
   \texttt{--workdir} vào \texttt{src\_jax/train.py}. Runtime cũng tiếp
   tục restore bằng \texttt{latest\_step()}, nên notebook này không còn hardcode
   \texttt{checkpoint\_100000}.
+  \item Branch này cũng giữ song song bộ notebook CelebA-HQ:
+  \texttt{raes-jax-celebahq-kaggle.ipynb},
+  \texttt{raes-jax-celebahq-kaggle-tpuv5e8-sitdh-s.ipynb},
+  \texttt{raes-jax-celebahq-kaggle-tpuv5e8-sitdh-b.ipynb}, và
+  \texttt{raes-jax-celebahq-kaggle-tpuv5e8-sitdh-b-resume.ipynb}. Merge này
+  cũng khôi phục hai helper export riêng cho CelebA-HQ là
+  \texttt{src\_jax/export\_celebahq\_hf.py} và
+  \texttt{src\_jax/export\_celebahq\_tfds.py}.
   \item Nếu cần huấn luyện Stage 1 kiểu GAN đầy đủ, hiện vẫn phải xem đây là
   phần chưa được JAX hóa trong branch này.
 \end{itemize}
