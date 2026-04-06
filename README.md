@@ -297,13 +297,13 @@ python3 src_jax/train.py \
   --set training.global_batch_size=256
 ```
 
-On Kaggle TPU, start from `--set training.num_workers=1` and then raise
-`--set training.prefetch_factor=<n>` before jumping straight to a large worker
-pool. This keeps the backend PyTorch loader compatible with
-`persistent_workers=True` after JAX has already initialized multithreaded
-runtime state, while still letting the host queue several ready batches ahead
-of the TPU. The adapter also disables the backend TensorBoard summary writer on
-Kaggle and keeps metric logging on stdout plus wandb.
+On Kaggle TPU, the standardized notebook defaults on this branch are
+`--set training.num_workers=16`, `--set training.prefetch_factor=4`, and
+`--set eval.prefetch_factor=4`. This keeps the backend PyTorch loader in the
+stable range we ship for the JAX notebooks while still letting the host queue
+several ready batches ahead of the TPU. The adapter also disables the backend
+TensorBoard summary writer on Kaggle and keeps metric logging on stdout plus
+wandb.
 
 When `--wandb` is enabled on `src_jax/train.py`, the adapter also writes a
 `wandb_run.json` file inside the selected workdir. That file is now the source
@@ -381,7 +381,7 @@ Key behavior:
 - `raes-jax-celeba-kaggle-moe1.ipynb` mirrors the standard Kaggle workflow end to end for CelebA, but now inserts `src_jax/build_source_gmm.py` between the validation FID build and the Stage 2 train cell, then writes a learned-source Stage 2 config `CelebA256_SiTDH-S_DINOv2-B_moe1_jax.yaml`.
 - `raes-jax-celeba-kaggle-tpuv5e8-sitdh-b-moe1.ipynb` is the `TPU v5e-8` sibling notebook for the DH/two-tower `SiTDH-B + moe1` recipe, reusing the same Kaggle/JAX flow while writing `CelebA256_SiTDH-B_DINOv2-B_moe1_jax_tpuv5e8.yaml`, setting `hidden_size=[768, 2048]`, `depth=[12, 2]`, and `num_heads=[12, 16]`, and building the GMM artifact before training. This notebook also keeps `src_jax/build_fid_stats.py --num-workers 32` by default.
 - `raes-jax-celeba-kaggle-tpuv5e8-sitdh-b-moe1-resume.ipynb` is the resume-only notebook for the `SiTDH-B + moe1` variant: it still restores the archived workdir, checks that `celeba256_source_gmm.npz` is present, resumes the newest `CelebA256_SiTDH-B_DINOv2-B_moe1_jax_tpuv5e8-*` run, and now expects either the persisted `wandb_run.json` binding file or a one-time `--wandb-run-id <existing_run_id>` for legacy workdirs.
-- In the CelebA `moe1` notebooks, the final Stage 2 train/resume cells point `--data-path` at `/kaggle/working/celeba256_imgfolder` on TPU and `/kaggle/working/celeba256_imgfolder/train` on the GPU notebook, keep `eval.data_path` on the `val` split, enable `training.log_rae_latent_stats=true` plus `training.log_activation_stats=true` on the TPU variants, and set `RAE_JAX_REBUILD_BACKEND=1` so the backend overlay reliably picks up the new `sit_gmm_moe1` interface on fresh Kaggle sessions.
+- In the CelebA `moe1` notebooks, the final Stage 2 train/resume cells point `--data-path` at `/kaggle/working/celeba256_imgfolder` on TPU and `/kaggle/working/celeba256_imgfolder/train` on the GPU notebook, keep `eval.data_path` on the `val` split, standardize loader overrides to `training.num_workers=16`, `training.prefetch_factor=4`, and `eval.prefetch_factor=4`, enable `training.log_rae_latent_stats=true` plus `training.log_activation_stats=true`, and set `RAE_JAX_REBUILD_BACKEND=1` so the backend overlay reliably picks up the new `sit_gmm_moe1` interface on fresh Kaggle sessions.
 - `raes-jax-celeba-kaggle-tpuv5e8-sitdh-b-moe1-resume.ipynb` is the resume-only Kaggle TPU notebook for the latest `CelebA256_SiTDH-B_DINOv2-B_moe1_jax_tpuv5e8-*` Orbax workdir, keeps the persisted `celeba256_source_gmm.npz` artifact in place, and now expects either the persisted `wandb_run.json` binding file or a one-time `--wandb-run-id <existing_run_id>` for legacy workdirs.
 - Branch này cũng giữ song song bộ notebook `moe1` cho CelebA-HQ: `raes-jax-celebahq-kaggle-moe1.ipynb`, `raes-jax-celebahq-kaggle-tpuv5e8-sitdh-s-moe1.ipynb`, `raes-jax-celebahq-kaggle-tpuv5e8-sitdh-b-moe1.ipynb`, và `raes-jax-celebahq-kaggle-tpuv5e8-sitdh-b-moe1-resume.ipynb`, để cùng chung code learned-source nhưng tách workflow dữ liệu/runs theo pipeline HQ.
 

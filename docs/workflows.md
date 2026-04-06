@@ -179,18 +179,18 @@ python3 src_jax/train.py \
   --wandb
 ```
 
-On Kaggle TPU, start from `--set training.num_workers=1` and then raise
-`--set training.prefetch_factor=<n>` before jumping straight to a large worker
-pool. This keeps the backend PyTorch loader compatible with
-`persistent_workers=True` after JAX has already initialized multithreaded
-runtime state, while still letting the host queue several ready batches ahead
-of the TPU. The adapter also disables the backend TensorBoard summary writer on
-Kaggle and keeps metric logging on stdout plus wandb.
+On Kaggle TPU, the standardized notebook defaults on this branch are
+`--set training.num_workers=16`, `--set training.prefetch_factor=4`, and
+`--set eval.prefetch_factor=4`. This keeps the backend PyTorch loader in the
+stable range we ship for the JAX notebooks while still letting the host queue a
+few ready batches ahead of the TPU. The adapter also disables the backend
+TensorBoard summary writer on Kaggle and keeps metric logging on stdout plus
+wandb.
 
 Useful additions:
 
 - `--set training.global_batch_size=256`: override YAML values from the CLI
-- `--set training.prefetch_factor=8`: deepen the host-side train prefetch queue
+- `--set training.prefetch_factor=4`: keep the shipped host-side train prefetch queue depth
 - `--set eval.prefetch_factor=4`: do the same for the validation loader
 - `--wandb-run-id <existing_run_id>`: bind a legacy JAX resume workdir to the exact historical W&B run once, then persist that binding inside the workdir
 - `--hf-repo-id <user>/<repo>`: upload the finished workdir to Hugging Face
@@ -492,7 +492,11 @@ builds `celeba256_source_gmm.npz`, and keeps the default checkpoint cadence at
 `hidden_channels=256`, `router_temperature=2.0`,
 `balance_loss_weight=0.1`, `entropy_loss_weight=1.0e-2`, and
 `var_kl_loss_weight=1.0`, while the FID build cell intentionally keeps
-`src_jax/build_fid_stats.py --num-workers 32`.
+`src_jax/build_fid_stats.py --num-workers 32`. The Stage 2 train/resume cells
+across the shipped `moe1` notebooks now all pin `training.num_workers=16`,
+`training.prefetch_factor=4`, `eval.prefetch_factor=4`,
+`training.log_rae_latent_stats=true`, and
+`training.log_activation_stats=true`.
 
 If you want the same Kaggle TPU flow but with the `SiTDH-B + moe1` DH Stage 2
 setup, use

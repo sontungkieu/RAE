@@ -155,13 +155,13 @@ python3 src_jax/train.py \
   --wandb
 \end{lstlisting}
 
-Trên Kaggle TPU, nên bắt đầu với \texttt{--set training.num\_workers=1}, rồi
-tăng \texttt{--set training.prefetch\_factor=<n>} trước khi nhảy thẳng sang một
-pool worker lớn. Cách này vẫn giữ backend PyTorch loader tương thích với
-\texttt{persistent\_workers=True} sau khi JAX đã khởi tạo runtime đa luồng,
-nhưng cho phép host queue trước nhiều batch hơn để giảm các spike do I/O và
-decode. Adapter cũng tự tắt backend TensorBoard summary writer trên Kaggle và
-giữ metric ở stdout cùng wandb.
+Trên Kaggle TPU, bộ notebook JAX của branch này hiện đã chuẩn hoá về
+\texttt{--set training.num\_workers=16},
+\texttt{--set training.prefetch\_factor=4}, và
+\texttt{--set eval.prefetch\_factor=4}. Mốc này giữ backend PyTorch loader ở
+vùng ổn định cho notebook JAX đóng gói sẵn, đồng thời vẫn cho host queue trước
+vài batch để chồng lấp I/O với TPU. Adapter cũng tự tắt backend TensorBoard
+summary writer trên Kaggle và giữ metric ở stdout cùng wandb.
 
 Điểm quan trọng:
 
@@ -339,7 +339,13 @@ và giữ cadence checkpoint mặc định ở mốc \texttt{210000} step. Block
 \texttt{condition\_dim=16}, \texttt{hidden\_channels=256},
 \texttt{router\_temperature=2.0}, \texttt{balance\_loss\_weight=0.1},
 \texttt{entropy\_loss\_weight=1.0e-2}, và
-\texttt{var\_kl\_loss\_weight=1.0}; riêng cell build FID stats vẫn giữ
+\texttt{var\_kl\_loss\_weight=1.0}; các cell train/resume Stage 2 trên toàn bộ
+bộ notebook \texttt{moe1} của branch này cũng đã thống nhất về
+\texttt{training.num\_workers=16},
+\texttt{training.prefetch\_factor=4},
+\texttt{eval.prefetch\_factor=4},
+\texttt{training.log\_rae\_latent\_stats=true}, và
+\texttt{training.log\_activation\_stats=true}; riêng cell build FID stats vẫn giữ
 \texttt{src\_jax/build\_fid\_stats.py --num-workers 32}.
 
 Nếu muốn giữ nguyên flow đó nhưng đổi Stage 2 sang biến thể DH
