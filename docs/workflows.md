@@ -527,7 +527,11 @@ and
 Those notebooks keep the same `StabilityVAE + SiT-B` pipeline, but export the
 CelebA-HQ 256 dataset to `/kaggle/working/celebahq256_imgfolder` and resume the
 timestamped `CelebAHQ256_SiT-B_StabilityVAE_jax_tpuv5e8-*` workdirs instead of
-the CelebA ones.
+the CelebA ones. They now pin the same Stage 2 host-loader/diagnostic defaults
+as the CelebA notebooks: `training.num_workers=16`,
+`training.prefetch_factor=4`, `eval.prefetch_factor=4`,
+`training.log_rae_latent_stats=true`, and
+`training.log_activation_stats=true`.
 
 ## 9. Upload a JAX Run to Hugging Face
 

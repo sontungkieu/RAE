@@ -364,4 +364,9 @@ Branch này cũng giữ song song bộ notebook CelebA-HQ:
 pipeline \texttt{StabilityVAE + SiT-B}, nhưng export dữ liệu sang
 \texttt{/kaggle/working/celebahq256\_imgfolder} và resume theo pattern
 \texttt{CelebAHQ256\_SiT-B\_StabilityVAE\_jax\_tpuv5e8-*} thay vì flow CelebA
-thường.
+thường. Chúng cũng pin cùng bộ mặc định loader/chẩn đoán Stage 2 như notebook
+CelebA: \texttt{training.num\_workers=16},
+\texttt{training.prefetch\_factor=4},
+\texttt{eval.prefetch\_factor=4},
+\texttt{training.log\_rae\_latent\_stats=true}, và
+\texttt{training.log\_activation\_stats=true}.
