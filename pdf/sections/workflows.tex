@@ -369,3 +369,12 @@ diagnostics mặc định. Nếu workdir đích là legacy run được tạo tr
 \texttt{wandb\_run.json} tồn tại, cần thêm
 \texttt{--wandb-run-id <existing\_run\_id>} một lần để notebook resume đúng
 chính run W\&B cũ đó.
+
+Branch này cũng giữ song song bộ notebook CelebA-HQ cho flow \texttt{moe1}:
+\texttt{vaes-jax-celebahq-kaggle-moe1.ipynb},
+\texttt{vaes-jax-celebahq-kaggle-tpuv5e8-sitb-moe1.ipynb}, và
+\texttt{vaes-jax-celebahq-kaggle-tpuv5e8-sitb-moe1-resume.ipynb}. Chúng dùng
+cùng recipe \texttt{StabilityVAE + SiT-B + moe1}, nhưng export
+\texttt{/kaggle/working/celebahq256\_imgfolder}, build
+\texttt{celebahq256\_source\_gmm.npz}, và resume theo pattern
+\texttt{CelebAHQ256\_SiT-B\_StabilityVAE\_moe1\_jax\_tpuv5e8-*}.
