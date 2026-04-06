@@ -191,6 +191,9 @@ them explicitly. On Kaggle TPU, start from those defaults if the host can
 sustain them, and only lower them from the CLI when that runtime becomes
 unstable. The adapter also disables the backend TensorBoard summary writer on
 Kaggle and keeps metric logging on stdout plus wandb.
+The shipped CelebA and CelebA-HQ Stage 2 DH notebooks on this branch now pin
+that same `16 / 4 / 4` loader setup explicitly and keep both latent/activation
+diagnostic logs enabled by default.
 
 Useful additions:
 
