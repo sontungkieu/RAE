@@ -305,8 +305,8 @@ giữ lại \texttt{src\_jax/export\_celebahq\_hf.py} và
 \texttt{src\_jax/export\_celebahq\_tfds.py}, nhưng đó không còn là public flow
 mặc định của branch này.
 
-Nếu muốn dùng baseline VAE mới, bắt đầu từ notebook
-\texttt{vaes-jax-celeba-kaggle.ipynb}. Notebook này giữ nguyên flow
+Nếu muốn dùng baseline VAE được ship sẵn, bắt đầu từ notebook TPU
+\texttt{vaes-jax-celeba-kaggle-tpuv5e8-sitb.ipynb}. Notebook này giữ nguyên flow
 \texttt{uv sync} và dựng \texttt{ImageFolder} từ CelebA như branch
 \texttt{jax-sit-dh}, nhưng đổi Stage 1 sang \texttt{stage1.StabilityVAE} và
 Stage 2 sang single-tower \texttt{stage2.models.SiT.SiT}. Các config được sinh
@@ -328,7 +328,7 @@ Khác với flow RAE:
   \texttt{training.log\_rae\_latent\_stats=true}, và
   \texttt{training.log\_activation\_stats=true} trong config Stage 2 sinh ra;
   \item cell train cuối truyền
-  \texttt{--data-path /kaggle/working/celeba256\_imgfolder/train}, còn
+  \texttt{--data-path /kaggle/working/celeba256\_imgfolder}, còn
   \texttt{eval.data\_path} trong config sinh ra vẫn trỏ tới split
   \texttt{/kaggle/working/celeba256\_imgfolder/val}.
 \end{itemize}
@@ -357,8 +357,7 @@ legacy run được tạo trước khi cơ chế \texttt{wandb\_run.json} tồn 
 \texttt{--wandb-run-id <existing\_run\_id>} một lần để notebook resume đúng
 chính run W\&B cũ đó.
 
-Branch này cũng giữ song song bộ notebook CelebA-HQ:
-\texttt{vaes-jax-celebahq-kaggle.ipynb},
+Branch này cũng giữ song song bộ notebook TPU CelebA-HQ:
 \texttt{vaes-jax-celebahq-kaggle-tpuv5e8-sitb.ipynb}, và
 \texttt{vaes-jax-celebahq-kaggle-tpuv5e8-sitb-resume.ipynb}. Chúng dùng cùng
 pipeline \texttt{StabilityVAE + SiT-B}, nhưng export dữ liệu sang

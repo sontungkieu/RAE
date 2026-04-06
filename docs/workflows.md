@@ -472,11 +472,11 @@ and [`src_jax/export_celebahq_tfds.py`](../src_jax/export_celebahq_tfds.py)
 helpers still exist if you explicitly want a CelebA-HQ export path, but they
 are no longer the default public flow for this branch.
 
-If you want the VAE baseline on the same dataset, start from
-[../vaes-jax-celeba-kaggle.ipynb](../vaes-jax-celeba-kaggle.ipynb). That
+If you want the shipped VAE baseline on the same dataset, start from
+[../vaes-jax-celeba-kaggle-tpuv5e8-sitb.ipynb](../vaes-jax-celeba-kaggle-tpuv5e8-sitb.ipynb). That
 notebook keeps the same `uv sync` and CelebA-to-`ImageFolder` preparation
 workflow as `jax-sit-dh`, but switches Stage 1 to `stage1.StabilityVAE` and
-Stage 2 to single-tower `stage2.models.SiT.SiT`. The generated configs are:
+Stage 2 to single-tower `stage2.models.SiT.SiT` on TPU. The generated configs are:
 
 - `configs/stage1/pretrained/CelebA256_StabilityVAE_jax.yaml`
 - `configs/stage2/training/CelebA256_SiT-B_StabilityVAE_jax.yaml`
@@ -492,7 +492,7 @@ Key properties of this VAE notebook flow:
 - Stage 2 uses the DiT-B-style `SiT-B` shape from the `shortcut-models`
   CelebA example (`hidden_size=768`, `depth=12`, `num_heads=12`,
   `patch_size=2`) while keeping this repo's `sit` flow-matching objective
-- the final train cell points `--data-path` at
+- the final train cell points `--data-path` at the full CelebA `ImageFolder`
   `/kaggle/working/celeba256_imgfolder/train` while the generated config keeps
   `eval.data_path` on `/kaggle/working/celeba256_imgfolder/val`
 
@@ -519,8 +519,7 @@ workdir was created before `wandb_run.json` existed, pass
 `--wandb-run-id <existing_run_id>` once so the resumed Kaggle session binds to
 the exact old W&B run instead of aborting.
 
-The same branch also keeps parallel CelebA-HQ notebooks:
-[../vaes-jax-celebahq-kaggle.ipynb](../vaes-jax-celebahq-kaggle.ipynb),
+The same branch also keeps parallel CelebA-HQ TPU notebooks:
 [../vaes-jax-celebahq-kaggle-tpuv5e8-sitb.ipynb](../vaes-jax-celebahq-kaggle-tpuv5e8-sitb.ipynb),
 and
 [../vaes-jax-celebahq-kaggle-tpuv5e8-sitb-resume.ipynb](../vaes-jax-celebahq-kaggle-tpuv5e8-sitb-resume.ipynb).
