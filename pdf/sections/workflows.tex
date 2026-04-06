@@ -310,10 +310,11 @@ CelebA-HQ cũ, repo vẫn giữ hai helper
 \texttt{src\_jax/export\_celebahq\_hf.py} và
 \texttt{src\_jax/export\_celebahq\_tfds.py}.
 
-Nếu muốn dùng baseline VAE mới, bắt đầu từ notebook
-\texttt{vaes-jax-celeba-kaggle-moe1.ipynb}. Notebook này giữ nguyên flow
-\texttt{uv sync} của Kaggle, nhưng chuẩn bị \texttt{celeba256\_imgfolder}, đổi
-Stage 1 sang \texttt{stage1.StabilityVAE}, Stage 2 sang single-tower
+Nếu muốn dùng baseline VAE mới, bắt đầu từ notebook TPU
+\texttt{vaes-jax-celeba-kaggle-tpuv5e8-sitb-moe1.ipynb}. Notebook này giữ
+nguyên flow \texttt{uv sync} của Kaggle, nhưng chuẩn bị
+\texttt{celeba256\_imgfolder}, đổi Stage 1 sang
+\texttt{stage1.StabilityVAE}, Stage 2 sang single-tower
 \texttt{stage2.models.SiT.SiT}, rồi build thêm artifact diagonal GMM cho block
 \texttt{source}. Các file được sinh runtime là:
 
@@ -341,7 +342,7 @@ Khác với flow RAE:
   \texttt{entropy\_loss\_weight=1.0e-2}, và
   \texttt{var\_kl\_loss\_weight=1.0} để bám sát hơn recipe public của
   \texttt{shortcut-models@moe1};
-  \item cell train cuối truyền \texttt{--data-path /kaggle/working/celeba256\_imgfolder/train},
+  \item cell train cuối truyền \texttt{--data-path /kaggle/working/celeba256\_imgfolder},
   còn \texttt{eval.data\_path} trong config sinh ra vẫn trỏ tới
   \texttt{/kaggle/working/celeba256\_imgfolder/val}.
 \end{itemize}
@@ -378,8 +379,7 @@ cùng bộ mặc định loader/chẩn đoán Stage 2 cho cả Kaggle thường 
 \texttt{training.log\_rae\_latent\_stats=true}, và
 \texttt{training.log\_activation\_stats=true}.
 
-Branch này cũng giữ song song bộ notebook CelebA-HQ cho flow \texttt{moe1}:
-\texttt{vaes-jax-celebahq-kaggle-moe1.ipynb},
+Branch này cũng giữ song song bộ notebook TPU CelebA-HQ cho flow \texttt{moe1}:
 \texttt{vaes-jax-celebahq-kaggle-tpuv5e8-sitb-moe1.ipynb}, và
 \texttt{vaes-jax-celebahq-kaggle-tpuv5e8-sitb-moe1-resume.ipynb}. Chúng dùng
 cùng recipe \texttt{StabilityVAE + SiT-B + moe1}, nhưng export

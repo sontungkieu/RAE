@@ -469,9 +469,9 @@ same `ImageFolder` layout used by the current JAX runtime. The older
 [`src_jax/export_celebahq_tfds.py`](../src_jax/export_celebahq_tfds.py) helpers
 are still available if you specifically want a manual CelebA-HQ export route.
 
-If you want the VAE learned-source flow on the same dataset, start from
-[../vaes-jax-celeba-kaggle-moe1.ipynb](../vaes-jax-celeba-kaggle-moe1.ipynb).
-That notebook keeps the same `uv sync` Kaggle flow, but prepares
+For the VAE learned-source flow on the same dataset, use the TPU notebook
+[../vaes-jax-celeba-kaggle-tpuv5e8-sitb-moe1.ipynb](../vaes-jax-celeba-kaggle-tpuv5e8-sitb-moe1.ipynb).
+That notebook keeps the same Kaggle `uv sync` flow, but prepares
 `celeba256_imgfolder`, switches Stage 1 to `stage1.StabilityVAE` and Stage 2
 to single-tower `stage2.models.SiT.SiT`, then builds an offline diagonal GMM
 artifact and injects a `source:` block into the generated Stage 2 config. The
@@ -496,7 +496,7 @@ Key properties of this VAE notebook flow:
 - sampling, preview images, and online FID start from the learned source prior
   instead of a pure Gaussian latent
 - the final train cell points `--data-path` at
-  `/kaggle/working/celeba256_imgfolder/train` while the generated config keeps
+  `/kaggle/working/celeba256_imgfolder` while the generated config keeps
   `eval.data_path` on `/kaggle/working/celeba256_imgfolder/val`
 
 For Kaggle `TPU v5e-8`, use
@@ -531,8 +531,7 @@ host-loader/diagnostic defaults across both Kaggle and TPU variants:
 `eval.prefetch_factor=4`, `training.log_rae_latent_stats=true`, and
 `training.log_activation_stats=true`.
 
-The same branch also keeps the parallel CelebA-HQ `moe1` notebooks:
-[../vaes-jax-celebahq-kaggle-moe1.ipynb](../vaes-jax-celebahq-kaggle-moe1.ipynb),
+The same branch also keeps the parallel CelebA-HQ TPU `moe1` notebooks:
 [../vaes-jax-celebahq-kaggle-tpuv5e8-sitb-moe1.ipynb](../vaes-jax-celebahq-kaggle-tpuv5e8-sitb-moe1.ipynb),
 and
 [../vaes-jax-celebahq-kaggle-tpuv5e8-sitb-moe1-resume.ipynb](../vaes-jax-celebahq-kaggle-tpuv5e8-sitb-moe1-resume.ipynb).

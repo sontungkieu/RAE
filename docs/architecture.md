@@ -289,7 +289,6 @@ src_jax/
   sample_ddp.py
   stage1_sample.py
   push_hf.py
-vaes-jax-celeba-kaggle-moe1.ipynb
 vaes-jax-celeba-kaggle-tpuv5e8-sitb-moe1.ipynb
 vaes-jax-celeba-kaggle-tpuv5e8-sitb-moe1-resume.ipynb
 ```
