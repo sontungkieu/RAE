@@ -211,6 +211,21 @@ def standardize_latents(
     return (latents_flat - mean) / (std + eps)
 
 
+def standardize_latents_inplace(
+    latents_flat: np.ndarray,
+    mean: np.ndarray,
+    std: np.ndarray,
+    eps: float,
+) -> np.ndarray:
+    if latents_flat.dtype != np.float32:
+        raise ValueError(
+            f"standardize_latents_inplace expects float32 input, got {latents_flat.dtype}."
+        )
+    latents_flat -= mean
+    latents_flat /= (std + eps)
+    return latents_flat
+
+
 def _logsumexp_np(values: np.ndarray, axis: int = -1, keepdims: bool = False) -> np.ndarray:
     max_values = np.max(values, axis=axis, keepdims=True)
     shifted = np.exp(values - max_values)
@@ -414,11 +429,10 @@ def fit_diag_gmm(
         raise ValueError("Cannot fit GMM on an empty latent array.")
 
     latents_flat = np.asarray(latents_flat, dtype=np.float32)
+    if not latents_flat.flags["C_CONTIGUOUS"]:
+        latents_flat = np.ascontiguousarray(latents_flat, dtype=np.float32)
     latent_mean, latent_std = compute_standardization_stats(latents_flat, eps=standardize_eps)
-    latents_std = np.asarray(
-        standardize_latents(latents_flat, latent_mean, latent_std, standardize_eps),
-        dtype=np.float32,
-    )
+    latents_std = standardize_latents_inplace(latents_flat, latent_mean, latent_std, standardize_eps)
 
     global_var = np.maximum(latents_std.var(axis=0, dtype=np.float64).astype(np.float32), var_floor)
     best_artifact: GMMArtifact | None = None

@@ -10,23 +10,27 @@ try:
     from src_jax.moe1.gmm_utils import (
         choose_gmm_feature_extractor,
         compute_active_modes,
+        compute_standardization_stats,
         extract_gmm_features,
         fit_diag_gmm,
         flatten_latents_nhwc,
         load_gmm_artifact,
         posterior_from_stats,
         save_gmm_artifact,
+        standardize_latents_inplace,
     )
     _IMPORT_ERROR = None
 except ModuleNotFoundError as exc:
     choose_gmm_feature_extractor = None
     compute_active_modes = None
+    compute_standardization_stats = None
     extract_gmm_features = None
     fit_diag_gmm = None
     flatten_latents_nhwc = None
     load_gmm_artifact = None
     posterior_from_stats = None
     save_gmm_artifact = None
+    standardize_latents_inplace = None
     _IMPORT_ERROR = exc
 
 
@@ -60,6 +64,15 @@ class Moe1GmmUtilsTests(unittest.TestCase):
             choose_gmm_feature_extractor((32, 32, 4), requested="auto"),
             "flatten",
         )
+
+    def test_standardize_latents_inplace_reuses_buffer(self) -> None:
+        latents = np.asarray([[1.0, 3.0], [5.0, 7.0]], dtype=np.float32)
+        mean, std = compute_standardization_stats(latents, eps=1e-6)
+        latents_id = id(latents)
+        standardized = standardize_latents_inplace(latents, mean, std, 1e-6)
+        self.assertEqual(id(standardized), latents_id)
+        np.testing.assert_allclose(standardized.mean(axis=0), 0.0, atol=1e-5)
+        np.testing.assert_allclose(standardized.var(axis=0), 1.0, atol=1e-5)
 
     def test_fit_diag_gmm_round_trip_and_posterior_normalization(self) -> None:
         rng = np.random.default_rng(0)

@@ -58,7 +58,8 @@ def build_parser() -> argparse.ArgumentParser:
         default="auto",
         help=(
             "How to convert NHWC latents into GMM features. "
-            "'auto' picks pyramid_16k for very large RAE latents; use spatial_mean only as a low-RAM fallback."
+            "'auto' picks pyramid_16k for very large RAE latents; use flatten on high-RAM hosts when you want the full latent vector, "
+            "or spatial_mean only as a low-RAM fallback."
         ),
     )
     parser.add_argument("--set", dest="set_values", action="append", default=[], help="OmegaConf override.")
@@ -74,6 +75,17 @@ def _infer_artifact_metadata(args: argparse.Namespace) -> tuple[str, float]:
     return "rae_encoded_output", 1.0
 
 
+def _flatten_feature_batch(features: np.ndarray) -> np.ndarray:
+    if features.ndim < 2:
+        raise ValueError(f"Expected feature batch with rank >= 2, got shape {features.shape}.")
+    return features.reshape((features.shape[0], -1))
+
+
+def _estimate_feature_matrix_gib(num_rows: int, feature_dim: int) -> float:
+    bytes_total = int(num_rows) * int(feature_dim) * np.dtype(np.float32).itemsize
+    return bytes_total / float(1024**3)
+
+
 def run_build_source_gmm(args: argparse.Namespace) -> Path:
     import jax.numpy as jnp
 
@@ -85,9 +97,9 @@ def run_build_source_gmm(args: argparse.Namespace) -> Path:
     if not image_paths:
         raise FileNotFoundError(f"No images selected from: {args.input}")
 
-    feature_batches: list[np.ndarray] = []
     latent_shape: tuple[int, ...] | None = None
     feature_extractor: str | None = None
+    feature_matrix: np.ndarray | None = None
     total = len(image_paths)
     processed = 0
 
@@ -100,25 +112,41 @@ def run_build_source_gmm(args: argparse.Namespace) -> Path:
                 latent_shape,
                 requested=args.feature_extractor,
             )
-            feature_shape = tuple(int(dim) for dim in extract_gmm_features(latents[:1], feature_extractor=feature_extractor).shape[1:])
+            first_features = np.asarray(
+                extract_gmm_features(latents, feature_extractor=feature_extractor),
+                dtype=np.float32,
+            )
+            feature_batch = _flatten_feature_batch(first_features)
+            feature_shape = tuple(int(dim) for dim in feature_batch.shape[1:])
+            estimated_gib = _estimate_feature_matrix_gib(total, feature_batch.shape[1])
             print(
                 "[source-gmm] using feature_extractor="
                 f"{feature_extractor} for latent_shape={latent_shape} -> feature_shape={feature_shape}"
             )
-        feature_batches.append(
-            np.asarray(
-                extract_gmm_features(latents, feature_extractor=feature_extractor or "flatten"),
-                dtype=np.float32,
+            print(
+                f"[source-gmm] preallocating feature matrix of shape=({total}, {feature_batch.shape[1]}) "
+                f"~ {estimated_gib:.2f} GiB"
             )
-        )
-        processed += latents.shape[0]
+            feature_matrix = np.empty((total, feature_batch.shape[1]), dtype=np.float32)
+        else:
+            feature_batch = _flatten_feature_batch(
+                np.asarray(
+                    extract_gmm_features(latents, feature_extractor=feature_extractor or "flatten"),
+                    dtype=np.float32,
+                )
+            )
+        batch_size = int(feature_batch.shape[0])
+        if feature_matrix is None:
+            raise RuntimeError("Feature matrix was not initialized.")
+        feature_matrix[processed : processed + batch_size] = feature_batch
+        processed += batch_size
         if args.log_every > 0 and (batch_idx == 1 or batch_idx % args.log_every == 0 or processed == total):
             print(f"[source-gmm] processed {processed}/{total} images")
 
-    if latent_shape is None or feature_extractor is None:
+    if latent_shape is None or feature_extractor is None or feature_matrix is None:
         raise RuntimeError("Failed to infer latent shape while building source GMM.")
 
-    latents_flat = np.concatenate(feature_batches, axis=0)
+    latents_flat = feature_matrix[:processed]
     artifact = fit_diag_gmm(
         latents_flat,
         num_modes=args.num_modes,

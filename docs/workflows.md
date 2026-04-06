@@ -470,14 +470,16 @@ The notebook keeps the standard CelebA Kaggle source dataset
 generated `val` split. The GPU notebook trains on
 `/kaggle/working/celeba256_imgfolder/train`, while the TPU notebooks point
 `--data-path` at the full `ImageFolder` root and still evaluate on `val`.
-For this DH branch, `src_jax/build_source_gmm.py` now defaults to
+For this DH branch, `src_jax/build_source_gmm.py` still defaults to
 `--feature-extractor auto`, which resolves to `pyramid_16k` for the large
 `16 x 16 x 768` RAE latents. That path block-pools the latent grid and applies
 deterministic channel projections so the offline GMM sees a `16384`-dimensional
-feature vector instead of the full flattened `196608`-dimensional tensor. Use
-`--feature-extractor spatial_mean` only when you need the low-RAM fallback, and
-keep `--feature-extractor flatten` only for smaller experiments where you
-explicitly want the full latent vector.
+feature vector instead of the full flattened `196608`-dimensional tensor. On
+high-RAM hosts you can now force `--feature-extractor flatten`; the builder
+preallocates one `N x D` float32 matrix and standardizes it in place, so the
+full latent vector no longer needs disk-backed memmaps just to avoid extra RAM
+copies. Use `--feature-extractor spatial_mean` only when you need the low-RAM
+fallback.
 
 For Kaggle `TPU v5e-8`, use
 [../raes-jax-celeba-kaggle-tpuv5e8-sitdh-b-moe1.ipynb](../raes-jax-celeba-kaggle-tpuv5e8-sitdh-b-moe1.ipynb).

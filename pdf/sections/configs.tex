@@ -186,7 +186,10 @@ source:
   \texttt{src\_jax/build\_source\_gmm.py}; script này cũng lưu luôn cách trích
   feature cho GMM. Trên branch DH, mode \texttt{auto} mặc định sẽ rơi về
   \texttt{pyramid\_16k}: latent RAE \texttt{16 x 16 x 768} được pool/proj về
-  \texttt{4 x 4 x 1024} rồi mới flatten thành \texttt{16384} chiều; chỉ dùng
+  \texttt{4 x 4 x 1024} rồi mới flatten thành \texttt{16384} chiều. Trên máy
+  RAM lớn có thể ép \texttt{flatten}; builder giờ preallocate đúng một ma trận
+  \texttt{N x D} kiểu \texttt{float32} và standardize in-place, nên full latent
+  vector không còn cần memmap trên đĩa chỉ để né thêm bản copy RAM. Chỉ dùng
   \texttt{spatial\_mean} khi cần fallback tiết kiệm RAM;
   \item \texttt{num\_modes} là số component GMM đồng thời là số expert của MoE;
   \item \texttt{condition\_dim} là chiều embedding mode trước khi broadcast bias

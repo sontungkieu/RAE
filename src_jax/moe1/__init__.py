@@ -13,6 +13,7 @@ from .gmm_utils import (
     pyramid_16k_latents_nhwc,
     save_gmm_artifact,
     standardize_latents,
+    standardize_latents_inplace,
 )
 from .source_losses import balance_loss, entropy_loss, summarize_router, var_only_kld_loss
 
@@ -39,6 +40,7 @@ __all__ = [
     "pyramid_16k_latents_nhwc",
     "save_gmm_artifact",
     "standardize_latents",
+    "standardize_latents_inplace",
     "summarize_router",
     "var_only_kld_loss",
 ]
