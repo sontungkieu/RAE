@@ -448,10 +448,10 @@ python3 src_jax/reconstruct_folder.py \
 This is the simplest way to export a validation reconstruction set before
 building FID references or comparing Stage 1 decoder changes.
 
-### Kaggle CelebA Notebook
+### Kaggle TPU CelebA Notebook
 
-Use [../raes-jax-celeba-kaggle-moe1.ipynb](../raes-jax-celeba-kaggle-moe1.ipynb)
-when you want the CelebA `RAE + SiTDH-S + moe1` workflow end to end:
+Use [../raes-jax-celeba-kaggle-tpuv5e8-sitdh-b-moe1.ipynb](../raes-jax-celeba-kaggle-tpuv5e8-sitdh-b-moe1.ipynb)
+when you want the shipped CelebA `RAE + SiTDH-B + moe1` workflow end to end:
 
 - clone the repo and checkout `jax-sit-dh-moe1`
 - set `UV_PROJECT_ENVIRONMENT=/tmp/.venv` and `UV_CACHE_DIR=/tmp/uv-cache`
@@ -462,14 +462,13 @@ when you want the CelebA `RAE + SiTDH-S + moe1` workflow end to end:
 - compute Stage 1 latent stats for CelebA
 - export Stage 1 reconstructions and build validation FID stats
 - build the offline diagonal GMM artifact with `src_jax/build_source_gmm.py`
-- write a CelebA Stage 2 config with `source.enabled=true` and launch `src_jax/train.py`
+- write a CelebA Stage 2 config with `source.enabled=true` and launch `src_jax/train.py` on TPU
 
 The notebook keeps the standard CelebA Kaggle source dataset
 `jessicali9530/celeba-dataset`, converts it into
 `/kaggle/working/celeba256_imgfolder`, and keeps `eval.data_path` on the
-generated `val` split. The GPU notebook trains on
-`/kaggle/working/celeba256_imgfolder/train`, while the TPU notebooks point
-`--data-path` at the full `ImageFolder` root and still evaluate on `val`.
+generated `val` split. The shipped TPU notebooks point `--data-path` at the
+full `ImageFolder` root and still evaluate on `val`.
 For this DH branch, `src_jax/build_source_gmm.py` still defaults to
 `--feature-extractor auto`, which resolves to `pyramid_16k` for the large
 `16 x 16 x 768` RAE latents. That path block-pools the latent grid and applies
@@ -498,18 +497,6 @@ across the shipped `moe1` notebooks now all pin `training.num_workers=16`,
 `training.log_rae_latent_stats=true`, and
 `training.log_activation_stats=true`.
 
-If you want the same Kaggle TPU flow but with the `SiTDH-B + moe1` DH Stage 2
-setup, use
-[../raes-jax-celeba-kaggle-tpuv5e8-sitdh-b-moe1.ipynb](../raes-jax-celeba-kaggle-tpuv5e8-sitdh-b-moe1.ipynb).
-That notebook keeps the same JAX/TPU workarounds and CelebA data prep, but
-writes the Stage 2 config as
-`CelebA256_SiTDH-B_DINOv2-B_moe1_jax_tpuv5e8.yaml`, using the DH two-tower
-layout `hidden_size=[768, 2048]`, `depth=[12, 2]`, `num_heads=[12, 16]`,
-enabling `use_pos_embed`, disabling label dropout with
-`class_dropout_prob=0.0`, inserting the offline GMM build before training, and
-keeping the same `210000`-step checkpoint cadence. Its source block matches the
-same recipe, and the FID build cell still keeps `--num-workers 32`.
-
 If you already have an Orbax run directory for `SiTDH-B + moe1` and want to
 continue training from its latest checkpoint, use
 [../raes-jax-celeba-kaggle-tpuv5e8-sitdh-b-moe1-resume.ipynb](../raes-jax-celeba-kaggle-tpuv5e8-sitdh-b-moe1-resume.ipynb).
@@ -523,8 +510,7 @@ that `/kaggle/working/RAE`, `/kaggle/working/celeba256_imgfolder`,
 `wandb_run.json` existed, pass `--wandb-run-id <existing_run_id>` once so the
 resumed Kaggle session binds to the exact old W&B run instead of aborting.
 
-This branch also keeps the parallel CelebA-HQ `moe1` notebook set:
-[../raes-jax-celebahq-kaggle-moe1.ipynb](../raes-jax-celebahq-kaggle-moe1.ipynb),
+This branch also keeps the parallel CelebA-HQ TPU `moe1` notebook set:
 [../raes-jax-celebahq-kaggle-tpuv5e8-sitdh-s-moe1.ipynb](../raes-jax-celebahq-kaggle-tpuv5e8-sitdh-s-moe1.ipynb),
 [../raes-jax-celebahq-kaggle-tpuv5e8-sitdh-b-moe1.ipynb](../raes-jax-celebahq-kaggle-tpuv5e8-sitdh-b-moe1.ipynb), and
 [../raes-jax-celebahq-kaggle-tpuv5e8-sitdh-b-moe1-resume.ipynb](../raes-jax-celebahq-kaggle-tpuv5e8-sitdh-b-moe1-resume.ipynb).
