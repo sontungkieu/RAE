@@ -445,8 +445,8 @@ building FID references or comparing Stage 1 decoder changes.
 
 ### Kaggle CelebA Notebook
 
-Use [../raes-jax-celeba-kaggle.ipynb](../raes-jax-celeba-kaggle.ipynb) when you
-want the standard Kaggle-style workflow end to end:
+Use [../raes-jax-celeba-kaggle-tpuv5e8-sitdh-s.ipynb](../raes-jax-celeba-kaggle-tpuv5e8-sitdh-s.ipynb) when you
+want the shipped TPU Kaggle workflow end to end:
 
 - clone the repo and checkout `jax-sit-dh`
 - set `UV_PROJECT_ENVIRONMENT=/tmp/.venv` and `UV_CACHE_DIR=/tmp/uv-cache`
@@ -456,7 +456,7 @@ want the standard Kaggle-style workflow end to end:
 - create the bootstrap identity stats file
 - compute Stage 1 latent stats for CelebA
 - export Stage 1 reconstructions and build validation FID stats
-- write a CelebA Stage 2 config and launch `src_jax/train.py`
+- write a CelebA Stage 2 config and launch `src_jax/train.py` on TPU
 
 For Kaggle `TPU v5e-8`, use
 [../raes-jax-celeba-kaggle-tpuv5e8-sitdh-s.ipynb](../raes-jax-celeba-kaggle-tpuv5e8-sitdh-s.ipynb).
@@ -494,8 +494,7 @@ or `checkpoint_100000`. If the target workdir was created before
 `wandb_run.json` existed, pass `--wandb-run-id <existing_run_id>` once so the
 resumed Kaggle session binds to the exact old W&B run instead of aborting.
 
-The same branch also keeps the parallel CelebA-HQ workflow:
-[../raes-jax-celebahq-kaggle.ipynb](../raes-jax-celebahq-kaggle.ipynb),
+The same branch also keeps the parallel CelebA-HQ TPU workflow:
 [../raes-jax-celebahq-kaggle-tpuv5e8-sitdh-s.ipynb](../raes-jax-celebahq-kaggle-tpuv5e8-sitdh-s.ipynb),
 [../raes-jax-celebahq-kaggle-tpuv5e8-sitdh-b.ipynb](../raes-jax-celebahq-kaggle-tpuv5e8-sitdh-b.ipynb),
 and

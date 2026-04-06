@@ -115,8 +115,8 @@ python3 src_jax/train.py \
   \texttt{src\_jax/build\_stage1\_stats.py} và \texttt{src\_jax/reconstruct\_folder.py}.
   Các lệnh này có thể dùng YAML chỉ có \texttt{stage\_1}, không cần
   \texttt{stage\_2.target}.
-  \item Nếu chạy trên Kaggle với CelebA, bắt đầu từ notebook
-  \texttt{raes-jax-celeba-kaggle.ipynb} để giữ đúng flow clone repo, đặt
+  \item Nếu chạy trên Kaggle với CelebA, bắt đầu từ notebook TPU
+  \texttt{raes-jax-celeba-kaggle-tpuv5e8-sitdh-s.ipynb} để giữ đúng flow clone repo, đặt
   \texttt{UV\_PROJECT\_ENVIRONMENT=/tmp/.venv} và
   \texttt{UV\_CACHE\_DIR=/tmp/uv-cache}, chạy \texttt{uv sync -q}, rồi chạy các
   bước phụ thuộc package qua \texttt{uv run}.
@@ -151,8 +151,7 @@ python3 src_jax/train.py \
   \texttt{--workdir} vào \texttt{src\_jax/train.py}. Runtime cũng tiếp
   tục restore bằng \texttt{latest\_step()}, nên notebook này không còn hardcode
   \texttt{checkpoint\_100000}.
-  \item Branch này cũng giữ song song bộ notebook CelebA-HQ:
-  \texttt{raes-jax-celebahq-kaggle.ipynb},
+  \item Branch này cũng giữ song song bộ notebook TPU CelebA-HQ:
   \texttt{raes-jax-celebahq-kaggle-tpuv5e8-sitdh-s.ipynb},
   \texttt{raes-jax-celebahq-kaggle-tpuv5e8-sitdh-b.ipynb}, và
   \texttt{raes-jax-celebahq-kaggle-tpuv5e8-sitdh-b-resume.ipynb}. Merge này
