@@ -530,6 +530,7 @@ host-loader/diagnostic defaults across both Kaggle and TPU variants:
 `training.num_workers=16`, `training.prefetch_factor=4`,
 `eval.prefetch_factor=4`, `training.log_rae_latent_stats=true`, and
 `training.log_activation_stats=true`.
+The shipped TPU notebooks on this branch also now default `export PROJECT="moe-diffusion"`; the existing `run_name` strings already carry the dataset, `StabilityVAE`, backbone, `moe1`, and TPU pipeline identifiers, so they do not need an extra project-only suffix.
 
 The same branch also keeps the parallel CelebA-HQ TPU `moe1` notebooks:
 [../vaes-jax-celebahq-kaggle-tpuv5e8-sitb-moe1.ipynb](../vaes-jax-celebahq-kaggle-tpuv5e8-sitb-moe1.ipynb),
