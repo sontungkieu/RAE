@@ -12,6 +12,10 @@ and the lightweight JAX/NNX adapter shipped in `src_jax/`.
 - [Kaggle Notebook (moe1)](../raes-jax-celeba-kaggle-moe1.ipynb): end-to-end CelebA notebook for the JAX `RAE + SiTDH-S + moe1` flow, including the offline `GMM + CNN-MoE` source build step.
 - [Kaggle TPU Notebook (SiTDH-B moe1)](../raes-jax-celeba-kaggle-tpuv5e8-sitdh-b-moe1.ipynb): sibling `TPU v5e-8` notebook for the DH/two-tower `SiTDH-B + moe1` setup, keeping the same Kaggle/JAX flow but adding the offline GMM artifact and learned source prior.
 - [Kaggle TPU Notebook (SiTDH-B moe1 Resume)](../raes-jax-celeba-kaggle-tpuv5e8-sitdh-b-moe1-resume.ipynb): minimal `TPU v5e-8` resume-only notebook for the `SiTDH-B + moe1` runs, checking both the restored Orbax workdir and the persisted `celeba256_source_gmm.npz` artifact, with strict W&B reuse plus automatic rewind to the latest checkpoint once the workdir has `wandb_run.json` or a one-time `--wandb-run-id` bind for legacy runs.
+- [Kaggle Notebook (CelebA-HQ moe1)](../raes-jax-celebahq-kaggle-moe1.ipynb): parallel CelebA-HQ notebook for the same `RAE + SiTDH-S + moe1` workflow.
+- [Kaggle TPU Notebook (CelebA-HQ SiTDH-S moe1)](../raes-jax-celebahq-kaggle-tpuv5e8-sitdh-s-moe1.ipynb): CelebA-HQ TPU `v5e-8` notebook for the `SiTDH-S + moe1` recipe.
+- [Kaggle TPU Notebook (CelebA-HQ SiTDH-B moe1)](../raes-jax-celebahq-kaggle-tpuv5e8-sitdh-b-moe1.ipynb): CelebA-HQ TPU `v5e-8` notebook for the `SiTDH-B + moe1` recipe.
+- [Kaggle TPU Notebook (CelebA-HQ SiTDH-B moe1 Resume)](../raes-jax-celebahq-kaggle-tpuv5e8-sitdh-b-moe1-resume.ipynb): resume-only CelebA-HQ TPU notebook for the `SiTDH-B + moe1` runs.
 
 ## Recommended Reading Order
 

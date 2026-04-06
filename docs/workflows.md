@@ -519,6 +519,15 @@ that `/kaggle/working/RAE`, `/kaggle/working/celeba256_imgfolder`,
 `wandb_run.json` existed, pass `--wandb-run-id <existing_run_id>` once so the
 resumed Kaggle session binds to the exact old W&B run instead of aborting.
 
+This branch also keeps the parallel CelebA-HQ `moe1` notebook set:
+[../raes-jax-celebahq-kaggle-moe1.ipynb](../raes-jax-celebahq-kaggle-moe1.ipynb),
+[../raes-jax-celebahq-kaggle-tpuv5e8-sitdh-s-moe1.ipynb](../raes-jax-celebahq-kaggle-tpuv5e8-sitdh-s-moe1.ipynb),
+[../raes-jax-celebahq-kaggle-tpuv5e8-sitdh-b-moe1.ipynb](../raes-jax-celebahq-kaggle-tpuv5e8-sitdh-b-moe1.ipynb), and
+[../raes-jax-celebahq-kaggle-tpuv5e8-sitdh-b-moe1-resume.ipynb](../raes-jax-celebahq-kaggle-tpuv5e8-sitdh-b-moe1-resume.ipynb).
+They keep the same learned-source `moe1` stack and backend overlay, but split
+the data prep, artifact names, and default run naming for the CelebA-HQ export
+pipeline.
+
 ## 9. Upload a JAX Run to Hugging Face
 
 Standalone upload:

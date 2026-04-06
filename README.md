@@ -36,6 +36,10 @@ Use the docs folder as the detailed guide for this branch:
 - [raes-jax-celeba-kaggle-moe1.ipynb](raes-jax-celeba-kaggle-moe1.ipynb): Kaggle notebook for the CelebA JAX `RAE + SiTDH-S + moe1` flow, including the offline `src_jax/build_source_gmm.py` step and a generated Stage 2 config with `source.enabled=true`
 - [raes-jax-celeba-kaggle-tpuv5e8-sitdh-b-moe1.ipynb](raes-jax-celeba-kaggle-tpuv5e8-sitdh-b-moe1.ipynb): sibling Kaggle `TPU v5e-8` notebook for the DH/two-tower `SiTDH-B + moe1` recipe, using `hidden_size=[768, 2048]`, `depth=[12, 2]`, `num_heads=[12, 16]`, `use_pos_embed=true`, and the same offline GMM build step before training
 - [raes-jax-celeba-kaggle-tpuv5e8-sitdh-b-moe1-resume.ipynb](raes-jax-celeba-kaggle-tpuv5e8-sitdh-b-moe1-resume.ipynb): minimal `TPU v5e-8` resume-only notebook for the `SiTDH-B + moe1` variant, auto-detecting the newest `CelebA256_SiTDH-B_DINOv2-B_moe1_jax_tpuv5e8-*` Orbax run and requiring the persisted `celeba256_source_gmm.npz` artifact, with strict W&B reuse once the workdir has `wandb_run.json` or you bind a legacy run with `--wandb-run-id`
+- [raes-jax-celebahq-kaggle-moe1.ipynb](raes-jax-celebahq-kaggle-moe1.ipynb): sibling Kaggle notebook for the CelebA-HQ JAX `RAE + SiTDH-S + moe1` flow, keeping the same learned-source steps while sourcing data from the parallel CelebA-HQ export path
+- [raes-jax-celebahq-kaggle-tpuv5e8-sitdh-s-moe1.ipynb](raes-jax-celebahq-kaggle-tpuv5e8-sitdh-s-moe1.ipynb): CelebA-HQ TPU `v5e-8` notebook for the `SiTDH-S + moe1` recipe
+- [raes-jax-celebahq-kaggle-tpuv5e8-sitdh-b-moe1.ipynb](raes-jax-celebahq-kaggle-tpuv5e8-sitdh-b-moe1.ipynb): CelebA-HQ TPU `v5e-8` notebook for the `SiTDH-B + moe1` recipe
+- [raes-jax-celebahq-kaggle-tpuv5e8-sitdh-b-moe1-resume.ipynb](raes-jax-celebahq-kaggle-tpuv5e8-sitdh-b-moe1-resume.ipynb): resume-only CelebA-HQ TPU notebook for the `SiTDH-B + moe1` runs
 
 ## Environment
 
@@ -379,6 +383,7 @@ Key behavior:
 - `raes-jax-celeba-kaggle-tpuv5e8-sitdh-b-moe1-resume.ipynb` is the resume-only notebook for the `SiTDH-B + moe1` variant: it still restores the archived workdir, checks that `celeba256_source_gmm.npz` is present, resumes the newest `CelebA256_SiTDH-B_DINOv2-B_moe1_jax_tpuv5e8-*` run, and now expects either the persisted `wandb_run.json` binding file or a one-time `--wandb-run-id <existing_run_id>` for legacy workdirs.
 - In the CelebA `moe1` notebooks, the final Stage 2 train/resume cells point `--data-path` at `/kaggle/working/celeba256_imgfolder` on TPU and `/kaggle/working/celeba256_imgfolder/train` on the GPU notebook, keep `eval.data_path` on the `val` split, enable `training.log_rae_latent_stats=true` plus `training.log_activation_stats=true` on the TPU variants, and set `RAE_JAX_REBUILD_BACKEND=1` so the backend overlay reliably picks up the new `sit_gmm_moe1` interface on fresh Kaggle sessions.
 - `raes-jax-celeba-kaggle-tpuv5e8-sitdh-b-moe1-resume.ipynb` is the resume-only Kaggle TPU notebook for the latest `CelebA256_SiTDH-B_DINOv2-B_moe1_jax_tpuv5e8-*` Orbax workdir, keeps the persisted `celeba256_source_gmm.npz` artifact in place, and now expects either the persisted `wandb_run.json` binding file or a one-time `--wandb-run-id <existing_run_id>` for legacy workdirs.
+- Branch này cũng giữ song song bộ notebook `moe1` cho CelebA-HQ: `raes-jax-celebahq-kaggle-moe1.ipynb`, `raes-jax-celebahq-kaggle-tpuv5e8-sitdh-s-moe1.ipynb`, `raes-jax-celebahq-kaggle-tpuv5e8-sitdh-b-moe1.ipynb`, và `raes-jax-celebahq-kaggle-tpuv5e8-sitdh-b-moe1-resume.ipynb`, để cùng chung code learned-source nhưng tách workflow dữ liệu/runs theo pipeline HQ.
 
 Current limitation:
 
