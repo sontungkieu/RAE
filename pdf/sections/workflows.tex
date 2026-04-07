@@ -205,7 +205,9 @@ export WANDB_KEY=<wandb_api_key>
 \texttt{resume="never"}; các lần resume sau sẽ đọc lại file này, giữ đúng run
 id đã bind, rồi tự rewind W\&B history về latest \texttt{checkpoint\_*} step
 qua \texttt{resume\_from}. Nhờ đó phần metric đã log sau checkpoint cuối của
-session cũ sẽ không bị giữ lại sai lịch sử. Nếu resume một Orbax workdir cũ chưa có
+session cũ sẽ không bị giữ lại sai lịch sử. Sau mỗi lần save Orbax thành công,
+runtime cũng sẽ prune các thư mục \texttt{checkpoint\_*} cũ trong workdir để
+chỉ giữ lại checkpoint mới nhất cho lần resume sau. Nếu resume một Orbax workdir cũ chưa có
 \texttt{wandb\_run.json}, cần truyền \texttt{--wandb-run-id <existing\_run\_id>}
 một lần để bind đúng historical run trước khi train tiếp. Khi đã có
 \texttt{wandb\_run.json}, launch resume không cần lặp lại thủ công
@@ -328,10 +330,13 @@ giữ luôn vector đầy đủ \texttt{196608} chiều khi fit GMM. Builder v�
 đường low-copy, nhưng \texttt{--storage-dtype auto} sẽ chọn
 \texttt{float16} cho backing matrix khi flatten DH quá lớn, còn
 \texttt{--compute-dtype auto} sẽ upcast từng chunk EM/KMeans về
-\texttt{float32}. Nhờ vậy full latent vector không còn bắt buộc phải ở
-\texttt{float32} toàn cục chỉ để fit GMM. Nếu muốn bản nén có cấu trúc hơn thì
-vẫn có thể ép \texttt{pyramid\_16k}; \texttt{spatial\_mean} tiếp tục là
-fallback tiết kiệm bộ nhớ khi máy không đủ RAM.
+\texttt{float32}. Nếu ai đó cố ép \texttt{--compute-dtype float16} cho full
+flatten DH quá rộng, fitter giờ cũng sẽ tự promote phần KMeans/EM offline về
+\texttt{float32} để tránh overflow và NaN treo lâu. Nhờ vậy full latent vector
+không còn bắt buộc phải ở \texttt{float32} toàn cục chỉ để fit GMM. Nếu muốn
+bản nén có cấu trúc hơn thì vẫn có thể ép \texttt{pyramid\_16k};
+\texttt{spatial\_mean} tiếp tục là fallback tiết kiệm bộ nhớ khi máy không đủ
+RAM.
 
 Nếu chạy trên Kaggle \texttt{TPU v5e-8}, dùng notebook
 \texttt{raes-jax-celeba-kaggle-tpuv5e8-sitdh-b-moe1.ipynb}. Bản này cố định biến thể

@@ -6,6 +6,7 @@ import importlib.util
 import json
 import math
 import os
+import shutil
 import time
 from collections import defaultdict
 from pathlib import Path
@@ -81,6 +82,30 @@ def _latest_orbax_checkpoint_step(workdir: Path) -> int | None:
             continue
         latest_step = step if latest_step is None else max(latest_step, step)
     return latest_step
+
+
+def _iter_orbax_checkpoint_dirs(workdir: Path) -> list[tuple[int, Path]]:
+    checkpoints: list[tuple[int, Path]] = []
+    for path in workdir.glob("checkpoint_*"):
+        if not path.is_dir():
+            continue
+        try:
+            step = int(path.name.rsplit("_", 1)[-1])
+        except ValueError:
+            continue
+        checkpoints.append((step, path))
+    checkpoints.sort(key=lambda item: item[0])
+    return checkpoints
+
+
+def _prune_stale_orbax_checkpoints(workdir: Path, *, keep_step: int) -> list[Path]:
+    removed: list[Path] = []
+    for step, path in _iter_orbax_checkpoint_dirs(workdir):
+        if step == keep_step:
+            continue
+        shutil.rmtree(path)
+        removed.append(path)
+    return removed
 
 
 def _generate_fresh_wandb_run_id(wandb_utils: Any) -> str:
@@ -1199,6 +1224,14 @@ def _patch_backend_train_loop_for_eval(trainer: Any) -> Any:
                     saved_ema_state,
                     mngr=ckpt_mngr,
                 )
+                removed_checkpoints = _prune_stale_orbax_checkpoints(workdir, keep_step=step + 1)
+                if removed_checkpoints:
+                    removed_names = ", ".join(path.name for path in removed_checkpoints)
+                    trainer.logging.info(
+                        "Pruned stale Orbax checkpoints after saving step %s: %s",
+                        step + 1,
+                        removed_names,
+                    )
                 del saved_state, saved_rng_state, saved_ema_state
 
             step += 1

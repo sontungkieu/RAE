@@ -146,6 +146,29 @@ class Moe1GmmUtilsTests(unittest.TestCase):
         self.assertEqual(artifact.mu.dtype, np.float32)
         self.assertEqual(artifact.var.dtype, np.float32)
 
+    def test_fit_diag_gmm_promotes_float16_compute_for_wide_features(self) -> None:
+        rng = np.random.default_rng(19)
+        cluster_a = rng.normal(loc=-0.2, scale=0.08, size=(6, 40000)).astype(np.float16)
+        cluster_b = rng.normal(loc=0.2, scale=0.08, size=(6, 40000)).astype(np.float16)
+        latents = np.concatenate([cluster_a, cluster_b], axis=0)
+
+        with self.assertWarnsRegex(RuntimeWarning, "Promoting offline EM/KMeans math to float32"):
+            artifact = fit_diag_gmm(
+                latents,
+                num_modes=2,
+                seed=7,
+                em_iters=3,
+                em_restarts=1,
+                chunk_size=4,
+                fit_compute_dtype="float16",
+            )
+
+        self.assertEqual(artifact.mu.dtype, np.float32)
+        self.assertEqual(artifact.var.dtype, np.float32)
+        self.assertTrue(np.isfinite(artifact.log_pi).all())
+        self.assertTrue(np.isfinite(artifact.mu).all())
+        self.assertTrue(np.isfinite(artifact.var).all())
+
     def test_compute_active_modes_uses_fraction_threshold(self) -> None:
         counts = np.asarray([50.0, 25.0, 20.0, 5.0], dtype=np.float32)
         self.assertEqual(

@@ -67,7 +67,9 @@ def build_parser() -> argparse.ArgumentParser:
         default="auto",
         help=(
             "Chunk dtype used during the offline GMM fit. "
-            "'auto' resolves to float32, so float16 storage can still upcast during EM."
+            "'auto' resolves to float32, so float16 storage can still upcast during EM. "
+            "Very wide flatten runs also auto-promote explicit float16 compute back to float32 "
+            "to avoid overflow in offline KMeans/EM math."
         ),
     )
     parser.add_argument(

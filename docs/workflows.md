@@ -209,6 +209,9 @@ Resume / initialize behavior:
   W&B run ID, and auto-rewind W&B history to the latest `checkpoint_*` step via
   `resume_from`, so post-checkpoint logs from a crashed session do not survive
   into the resumed history.
+- After each successful Orbax save, the runtime prunes older `checkpoint_*`
+  directories in that workdir so only the newest checkpoint remains available
+  for later resumes.
 - If a legacy Orbax workdir already has checkpoints but predates
   `wandb_run.json`, pass `--wandb-run-id <existing_run_id>` once so the
   adapter can persist the exact historical run binding before training
@@ -479,9 +482,12 @@ For this DH branch, `src_jax/build_source_gmm.py` now defaults to
 the low-copy path, but it no longer assumes the backing matrix must stay in
 `float32`: `--storage-dtype auto` resolves large flattened DH runs to
 `float16`, while `--compute-dtype auto` upcasts each EM/KMeans chunk back to
-`float32` during the fit. That keeps the full-latent recipe practical on large
-hosts without forcing disk-backed memmaps. `--feature-extractor pyramid_16k`
-remains available when you explicitly want a structured compressed feature, and
+`float32` during the fit. If someone explicitly forces `--compute-dtype float16`
+on a very wide flattened DH run, the fitter now auto-promotes the offline
+KMeans/EM math back to `float32` to avoid overflow and NaN stalls. That keeps
+the full-latent recipe practical on large hosts without forcing disk-backed
+memmaps. `--feature-extractor pyramid_16k` remains available when you
+explicitly want a structured compressed feature, and
 `--feature-extractor spatial_mean` stays the low-RAM fallback.
 
 For Kaggle `TPU v5e-8`, use

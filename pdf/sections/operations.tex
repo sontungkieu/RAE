@@ -133,9 +133,11 @@ python3 src_jax/train.py \
   trên vector đầy đủ \texttt{196608} chiều. Builder vẫn preallocate đúng một
   ma trận \texttt{N x D}, nhưng \texttt{--storage-dtype auto} sẽ chọn
   \texttt{float16} cho full-latent DH và \texttt{--compute-dtype auto} sẽ
-  upcast từng chunk fit về \texttt{float32}; nếu muốn feature nén có cấu trúc
-  hơn thì có thể ép sang \texttt{pyramid\_16k}, còn \texttt{spatial\_mean} chỉ
-  nên dùng khi thật sự thiếu RAM,
+  upcast từng chunk fit về \texttt{float32}; nếu có ai ép
+  \texttt{--compute-dtype float16} cho full flatten quá rộng thì fitter cũng
+  sẽ tự promote phần KMeans/EM offline về \texttt{float32}. Nếu muốn feature
+  nén có cấu trúc hơn thì có thể ép sang \texttt{pyramid\_16k}, còn
+  \texttt{spatial\_mean} chỉ nên dùng khi thật sự thiếu RAM,
   rồi mới ghi config Stage 2 với block \texttt{source.enabled=true}. Route TFDS
   hay Hugging Face cho CelebA-HQ vẫn còn trong repo, nhưng không còn là flow
   mặc định của branch này.

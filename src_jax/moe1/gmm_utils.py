@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import dataclasses
+import warnings
 from functools import lru_cache
 from pathlib import Path
 from typing import Any
@@ -14,6 +15,8 @@ except ModuleNotFoundError:  # pragma: no cover - optional in non-JAX environmen
 
 
 LOG_2PI = float(np.log(2.0 * np.pi))
+FLOAT16_MAX = float(np.finfo(np.float16).max)
+FLOAT16_GMM_DIM_SCALE = float(LOG_2PI + 1.0)
 
 
 @dataclasses.dataclass(frozen=True)
@@ -244,6 +247,26 @@ def _resolve_fit_compute_dtype(
     return _normalize_numpy_dtype(fit_compute_dtype)
 
 
+def _stabilize_fit_compute_dtype(
+    compute_dtype: np.dtype,
+    *,
+    feature_dim: int,
+) -> np.dtype:
+    if compute_dtype != np.dtype(np.float16):
+        return compute_dtype
+    # Full-latent DH runs are too wide for stable float16 log-prob / logsumexp math.
+    if float(feature_dim) * FLOAT16_GMM_DIM_SCALE >= FLOAT16_MAX:
+        warnings.warn(
+            "Requested float16 GMM compute for a very wide feature space "
+            f"(dim={feature_dim}). Promoting offline EM/KMeans math to float32 "
+            "to avoid overflow and NaN stalls.",
+            RuntimeWarning,
+            stacklevel=2,
+        )
+        return np.dtype(np.float32)
+    return compute_dtype
+
+
 def _cast_chunk_for_compute(
     latents_flat: np.ndarray,
     start: int,
@@ -272,8 +295,9 @@ def _standardized_chunk(
 
 
 def _logsumexp_np(values: np.ndarray, axis: int = -1, keepdims: bool = False) -> np.ndarray:
-    max_values = np.max(values, axis=axis, keepdims=True)
-    shifted = np.exp(values - max_values)
+    math_values = np.asarray(values, dtype=np.float32) if values.dtype == np.float16 else values
+    max_values = np.max(math_values, axis=axis, keepdims=True)
+    shifted = np.exp(math_values - max_values)
     summed = np.sum(shifted, axis=axis, keepdims=True)
     output = max_values + np.log(np.maximum(summed, 1e-12))
     if keepdims:
@@ -287,12 +311,18 @@ def diag_gmm_log_prob_np(
     mu: np.ndarray,
     var: np.ndarray,
 ) -> np.ndarray:
-    safe_var = np.maximum(var, 1e-12)
-    diff = latents_std[:, None, :] - mu[None, :, :]
-    quad = np.sum(np.square(diff) / safe_var[None, :, :], axis=-1)
-    log_det = np.sum(np.log(safe_var), axis=-1)
+    math_dtype = np.float32 if np.result_type(latents_std, log_pi, mu, var) == np.float16 else np.result_type(latents_std, log_pi, mu, var)
+    latents_math = np.asarray(latents_std, dtype=math_dtype)
+    log_pi_math = np.asarray(log_pi, dtype=math_dtype)
+    mu_math = np.asarray(mu, dtype=math_dtype)
+    var_math = np.asarray(var, dtype=math_dtype)
+    safe_var = np.maximum(var_math, 1e-12)
+    diff = latents_math[:, None, :] - mu_math[None, :, :]
+    quad = np.sum(np.square(diff) / safe_var[None, :, :], axis=-1, dtype=math_dtype)
+    log_det = np.sum(np.log(safe_var), axis=-1, dtype=math_dtype)
     dim = latents_std.shape[-1]
-    return log_pi[None, :] - 0.5 * (dim * LOG_2PI + log_det[None, :] + quad)
+    dim_term = np.asarray(dim * LOG_2PI, dtype=math_dtype)
+    return log_pi_math[None, :] - 0.5 * (dim_term + log_det[None, :] + quad)
 
 
 def diag_gmm_log_prob_jax(
@@ -389,6 +419,11 @@ def _chunk_em_stats(
         )
         log_prob = diag_gmm_log_prob_np(chunk, log_pi, mu, var)
         log_norm = _logsumexp_np(log_prob, axis=-1, keepdims=True)
+        if not np.isfinite(log_prob).all() or not np.isfinite(log_norm).all():
+            raise FloatingPointError(
+                "Non-finite offline GMM EM statistics detected. "
+                "Use --compute-dtype auto or float32 for high-dimensional flatten runs."
+            )
         resp = np.exp(log_prob - log_norm)
         resp64 = resp.astype(np.float64, copy=False)
         chunk64 = chunk.astype(np.float64, copy=False)
@@ -428,6 +463,11 @@ def _compute_train_nll(
         )
         log_prob = diag_gmm_log_prob_np(chunk, log_pi, mu, var)
         log_norm = _logsumexp_np(log_prob, axis=-1, keepdims=False)
+        if not np.isfinite(log_prob).all() or not np.isfinite(log_norm).all():
+            raise FloatingPointError(
+                "Non-finite offline GMM NLL detected. "
+                "Use --compute-dtype auto or float32 for high-dimensional flatten runs."
+            )
         total_nll += float((-log_norm).sum(dtype=np.float64))
     return total_nll / float(latents_flat.shape[0])
 
@@ -551,7 +591,10 @@ def fit_diag_gmm(
     if not latents_flat.flags["C_CONTIGUOUS"]:
         latents_flat = np.ascontiguousarray(latents_flat, dtype=storage_dtype)
     latent_mean, latent_std = compute_standardization_stats(latents_flat, eps=standardize_eps)
-    compute_dtype = _resolve_fit_compute_dtype(fit_compute_dtype)
+    compute_dtype = _stabilize_fit_compute_dtype(
+        _resolve_fit_compute_dtype(fit_compute_dtype),
+        feature_dim=latents_flat.shape[1],
+    )
     raw_var = np.square(latent_std.astype(np.float64))
     global_var = np.maximum(
         (raw_var / np.square(latent_std.astype(np.float64) + standardize_eps)).astype(np.float32),

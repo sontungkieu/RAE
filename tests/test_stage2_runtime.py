@@ -11,7 +11,9 @@ from unittest.mock import patch
 try:
     from src_jax.stage2_runtime import (
         _install_strict_wandb_initializer,
+        _iter_orbax_checkpoint_dirs,
         _load_wandb_resume_metadata,
+        _prune_stale_orbax_checkpoints,
         _resolve_stage2_exp_name,
         _resolve_wandb_resume_binding,
         _sample_initial_latents,
@@ -20,7 +22,9 @@ try:
     _IMPORT_ERROR = None
 except Exception as exc:  # pragma: no cover - environment-dependent
     _install_strict_wandb_initializer = None
+    _iter_orbax_checkpoint_dirs = None
     _load_wandb_resume_metadata = None
+    _prune_stale_orbax_checkpoints = None
     _resolve_stage2_exp_name = None
     _resolve_wandb_resume_binding = None
     _sample_initial_latents = None
@@ -143,6 +147,35 @@ class Stage2RuntimeTests(unittest.TestCase):
 
 @unittest.skipIf(_IMPORT_ERROR is not None, f"Missing optional dependency: {_IMPORT_ERROR}")
 class Stage2RuntimeWandbTests(unittest.TestCase):
+    def test_iter_orbax_checkpoint_dirs_sorts_and_filters_dirs(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            workdir = Path(tmp_dir)
+            (workdir / "checkpoint_000120").mkdir()
+            (workdir / "checkpoint_000010").mkdir()
+            (workdir / "checkpoint_latest").mkdir()
+            (workdir / "checkpoint_000200.txt").write_text("ignored", encoding="utf-8")
+
+            entries = _iter_orbax_checkpoint_dirs(workdir)
+
+            self.assertEqual(entries, [
+                (10, workdir / "checkpoint_000010"),
+                (120, workdir / "checkpoint_000120"),
+            ])
+
+    def test_prune_stale_orbax_checkpoints_keeps_only_requested_step(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            workdir = Path(tmp_dir)
+            keep_path = workdir / "checkpoint_000120"
+            removed_path = workdir / "checkpoint_000010"
+            keep_path.mkdir()
+            removed_path.mkdir()
+
+            removed = _prune_stale_orbax_checkpoints(workdir, keep_step=120)
+
+            self.assertEqual(removed, [removed_path])
+            self.assertFalse(removed_path.exists())
+            self.assertTrue(keep_path.exists())
+
     def test_resolve_stage2_exp_name_prefers_explicit_cli_value(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir:
             args = SimpleNamespace(exp_name="cli-exp", workdir=tmp_dir)
