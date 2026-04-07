@@ -97,11 +97,10 @@ def _iter_orbax_checkpoint_dirs(workdir: Path) -> list[tuple[int, Path]]:
     checkpoints.sort(key=lambda item: item[0])
     return checkpoints
 
-
-def _prune_stale_orbax_checkpoints(workdir: Path, *, keep_step: int) -> list[Path]:
+def _delete_orbax_checkpoints(workdir: Path, *, keep_step: int | None = None) -> list[Path]:
     removed: list[Path] = []
     for step, path in _iter_orbax_checkpoint_dirs(workdir):
-        if step == keep_step:
+        if keep_step is not None and step == keep_step:
             continue
         shutil.rmtree(path)
         removed.append(path)
@@ -888,6 +887,15 @@ def _patch_backend_train_loop_for_eval(trainer: Any) -> Any:
         loaded_state, loaded_rng_state, loaded_ema_state = trainer.ckpt_utils.restore_checkpoints(
             workdir, restore_step, opt_state, opt_rng_state, ema_state, mngr=ckpt_mngr
         )
+        if restore_step is not None and not config.standalone_eval:
+            removed_checkpoints = _delete_orbax_checkpoints(workdir)
+            if removed_checkpoints:
+                removed_names = ", ".join(path.name for path in removed_checkpoints)
+                trainer.logging.info(
+                    "Deleted restored Orbax checkpoints after loading step %s: %s",
+                    restore_step,
+                    removed_names,
+                )
 
         mesh = trainer.sharding_utils.create_device_mesh(
             config.sharding.mesh,
@@ -1216,6 +1224,14 @@ def _patch_backend_train_loop_for_eval(trainer: Any) -> Any:
                 )
                 _, _, saved_ema_state = trainer.nnx.split(ema, trainer.nnx.RngKey, ...)
                 saved_ema_state = trainer.jax.device_get(p_sync_state(saved_ema_state))
+                removed_checkpoints = _delete_orbax_checkpoints(workdir)
+                if removed_checkpoints:
+                    removed_names = ", ".join(path.name for path in removed_checkpoints)
+                    trainer.logging.info(
+                        "Deleted stale Orbax checkpoints before saving step %s: %s",
+                        step + 1,
+                        removed_names,
+                    )
                 trainer.ckpt_utils.save_checkpoints(
                     workdir,
                     step + 1,
@@ -1224,14 +1240,6 @@ def _patch_backend_train_loop_for_eval(trainer: Any) -> Any:
                     saved_ema_state,
                     mngr=ckpt_mngr,
                 )
-                removed_checkpoints = _prune_stale_orbax_checkpoints(workdir, keep_step=step + 1)
-                if removed_checkpoints:
-                    removed_names = ", ".join(path.name for path in removed_checkpoints)
-                    trainer.logging.info(
-                        "Pruned stale Orbax checkpoints after saving step %s: %s",
-                        step + 1,
-                        removed_names,
-                    )
                 del saved_state, saved_rng_state, saved_ema_state
 
             step += 1

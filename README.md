@@ -238,9 +238,11 @@ run before continuing. When you pass `--workdir` without `--exp-name`, the JAX
 adapter now infers the resume experiment name from `wandb_run.json` when
 present, otherwise from the workdir basename, so resume launches do not need a
 second manual `--exp-name` override just to satisfy the strict W&B binding.
-After each successful Orbax save, the Stage 2 runtime now prunes older
-`checkpoint_*` directories in that workdir so only the newest checkpoint stays
-behind for later resumes.
+When a resumed training run restores an Orbax checkpoint, the runtime now
+deletes the on-disk `checkpoint_*` directory immediately after the state is
+loaded. Later saves also clear any older `checkpoint_*` directories before
+writing the next checkpoint, so these JAX workdirs never need space for two
+Orbax checkpoints at once.
 
 Stage 2 training now logs the following namespaces:
 

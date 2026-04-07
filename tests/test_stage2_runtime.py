@@ -10,6 +10,7 @@ from unittest.mock import patch
 
 try:
     from src_jax.stage2_runtime import (
+        _delete_orbax_checkpoints,
         _install_strict_wandb_initializer,
         _iter_orbax_checkpoint_dirs,
         _load_wandb_resume_metadata,
@@ -21,6 +22,7 @@ try:
     )
     _IMPORT_ERROR = None
 except Exception as exc:  # pragma: no cover - environment-dependent
+    _delete_orbax_checkpoints = None
     _install_strict_wandb_initializer = None
     _iter_orbax_checkpoint_dirs = None
     _load_wandb_resume_metadata = None
@@ -161,8 +163,21 @@ class Stage2RuntimeWandbTests(unittest.TestCase):
                 (10, workdir / "checkpoint_000010"),
                 (120, workdir / "checkpoint_000120"),
             ])
+    def test_delete_orbax_checkpoints_removes_all_by_default(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            workdir = Path(tmp_dir)
+            ckpt_a = workdir / "checkpoint_000010"
+            ckpt_b = workdir / "checkpoint_000120"
+            ckpt_a.mkdir()
+            ckpt_b.mkdir()
 
-    def test_prune_stale_orbax_checkpoints_keeps_only_requested_step(self) -> None:
+            removed = _delete_orbax_checkpoints(workdir)
+
+            self.assertEqual(removed, [ckpt_a, ckpt_b])
+            self.assertFalse(ckpt_a.exists())
+            self.assertFalse(ckpt_b.exists())
+
+    def test_delete_orbax_checkpoints_can_keep_requested_step(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir:
             workdir = Path(tmp_dir)
             keep_path = workdir / "checkpoint_000120"
@@ -170,7 +185,7 @@ class Stage2RuntimeWandbTests(unittest.TestCase):
             keep_path.mkdir()
             removed_path.mkdir()
 
-            removed = _prune_stale_orbax_checkpoints(workdir, keep_step=120)
+            removed = _delete_orbax_checkpoints(workdir, keep_step=120)
 
             self.assertEqual(removed, [removed_path])
             self.assertFalse(removed_path.exists())
