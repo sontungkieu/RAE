@@ -207,7 +207,10 @@ id đã bind, rồi tự rewind W\&B history về latest \texttt{checkpoint\_*} 
 qua \texttt{resume\_from}. Nhờ đó phần metric đã log sau checkpoint cuối của
 session cũ sẽ không bị giữ lại sai lịch sử. Nếu resume một Orbax workdir cũ chưa có
 \texttt{wandb\_run.json}, cần truyền \texttt{--wandb-run-id <existing\_run\_id>}
-một lần để bind đúng historical run trước khi train tiếp.
+một lần để bind đúng historical run trước khi train tiếp. Khi đã có
+\texttt{wandb\_run.json}, launch resume không cần lặp lại thủ công
+\texttt{--exp-name}; adapter sẽ tự suy ra tên run từ metadata đó, hoặc từ tên
+thư mục workdir nếu metadata chưa có.
 
 \subsection{FID trong train loop}
 
@@ -370,8 +373,7 @@ Nếu workdir đích là legacy run được tạo trước khi cơ chế
 chính run W\&B cũ đó.
 
 Branch này cũng giữ song song bộ notebook TPU CelebA-HQ cho learned-source:
-\texttt{raes-jax-celebahq-kaggle-tpuv5e8-sitdh-s-moe1.ipynb},
-\texttt{raes-jax-celebahq-kaggle-tpuv5e8-sitdh-b-moe1.ipynb}, và
+\texttt{raes-jax-celebahq-kaggle-tpuv5e8-sitdh-b-moe1.ipynb} và
 \texttt{raes-jax-celebahq-kaggle-tpuv5e8-sitdh-b-moe1-resume.ipynb}. Chúng dùng
 chung learned-source stack \texttt{moe1} và backend overlay, nhưng tách riêng
 flow chuẩn hoá dữ liệu, tên artifact, và mặc định run name cho pipeline

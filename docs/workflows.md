@@ -213,6 +213,9 @@ Resume / initialize behavior:
   `wandb_run.json`, pass `--wandb-run-id <existing_run_id>` once so the
   adapter can persist the exact historical run binding before training
   continues.
+- If you launch with `--workdir` but omit `--exp-name`, the adapter now
+  recovers the stored resume name from `wandb_run.json` when it exists,
+  otherwise it falls back to the workdir basename.
 
 ## 5. Enable wandb Logging
 
@@ -232,7 +235,8 @@ adapter bridges the legacy `ENTITY`, `PROJECT`, and `WANDB_KEY` names into the
 On the JAX path, `wandb_run.json` inside the workdir is now the source of truth
 for exact resume behavior. A later launch must match that stored binding, and
 the adapter rewinds the W&B run to the latest checkpoint step before logging
-continues.
+continues. Resume launches therefore no longer need a duplicate manual
+`--exp-name` override when they already point at the historical workdir.
 
 Current Stage 2 namespaces:
 
@@ -512,8 +516,7 @@ that `/kaggle/working/RAE`, `/kaggle/working/celeba256_imgfolder`,
 resumed Kaggle session binds to the exact old W&B run instead of aborting.
 
 This branch also keeps the parallel CelebA-HQ TPU `moe1` notebook set:
-[../raes-jax-celebahq-kaggle-tpuv5e8-sitdh-s-moe1.ipynb](../raes-jax-celebahq-kaggle-tpuv5e8-sitdh-s-moe1.ipynb),
-[../raes-jax-celebahq-kaggle-tpuv5e8-sitdh-b-moe1.ipynb](../raes-jax-celebahq-kaggle-tpuv5e8-sitdh-b-moe1.ipynb), and
+[../raes-jax-celebahq-kaggle-tpuv5e8-sitdh-b-moe1.ipynb](../raes-jax-celebahq-kaggle-tpuv5e8-sitdh-b-moe1.ipynb) and
 [../raes-jax-celebahq-kaggle-tpuv5e8-sitdh-b-moe1-resume.ipynb](../raes-jax-celebahq-kaggle-tpuv5e8-sitdh-b-moe1-resume.ipynb).
 They keep the same learned-source `moe1` stack and backend overlay, but split
 the data prep, artifact names, and default run naming for the CelebA-HQ export

@@ -35,7 +35,6 @@ Use the docs folder as the detailed guide for this branch:
 - [pdf/main.pdf](pdf/main.pdf): detailed Vietnamese PDF for architecture, workflow, config, and operations
 - [raes-jax-celeba-kaggle-tpuv5e8-sitdh-b-moe1.ipynb](raes-jax-celeba-kaggle-tpuv5e8-sitdh-b-moe1.ipynb): sibling Kaggle `TPU v5e-8` notebook for the DH/two-tower `SiTDH-B + moe1` recipe, using `hidden_size=[768, 2048]`, `depth=[12, 2]`, `num_heads=[12, 16]`, `use_pos_embed=true`, and the same offline GMM build step before training
 - [raes-jax-celeba-kaggle-tpuv5e8-sitdh-b-moe1-resume.ipynb](raes-jax-celeba-kaggle-tpuv5e8-sitdh-b-moe1-resume.ipynb): minimal `TPU v5e-8` resume-only notebook for the `SiTDH-B + moe1` variant, auto-detecting the newest `CelebA256_SiTDH-B_DINOv2-B_moe1_jax_tpuv5e8-*` Orbax run and requiring the persisted `celeba256_source_gmm.npz` artifact, with strict W&B reuse once the workdir has `wandb_run.json` or you bind a legacy run with `--wandb-run-id`
-- [raes-jax-celebahq-kaggle-tpuv5e8-sitdh-s-moe1.ipynb](raes-jax-celebahq-kaggle-tpuv5e8-sitdh-s-moe1.ipynb): CelebA-HQ TPU `v5e-8` notebook for the `SiTDH-S + moe1` recipe
 - [raes-jax-celebahq-kaggle-tpuv5e8-sitdh-b-moe1.ipynb](raes-jax-celebahq-kaggle-tpuv5e8-sitdh-b-moe1.ipynb): CelebA-HQ TPU `v5e-8` notebook for the `SiTDH-B + moe1` recipe
 - [raes-jax-celebahq-kaggle-tpuv5e8-sitdh-b-moe1-resume.ipynb](raes-jax-celebahq-kaggle-tpuv5e8-sitdh-b-moe1-resume.ipynb): resume-only CelebA-HQ TPU notebook for the `SiTDH-B + moe1` runs
 
@@ -235,7 +234,10 @@ run continues from the checkpoint instead of keeping stale post-checkpoint
 history such as `120k -> 150k` after a crash. If you resume an older Orbax
 workdir that predates `wandb_run.json`, pass `--wandb-run-id <existing_run_id>`
 once so the adapter can bind that legacy workdir to the exact historical W&B
-run before continuing.
+run before continuing. When you pass `--workdir` without `--exp-name`, the JAX
+adapter now infers the resume experiment name from `wandb_run.json` when
+present, otherwise from the workdir basename, so resume launches do not need a
+second manual `--exp-name` override just to satisfy the strict W&B binding.
 
 Stage 2 training now logs the following namespaces:
 
@@ -310,7 +312,10 @@ exist, later launches now auto-rewind the bound W&B run to the latest
 checkpoint step before logging continues. If you point `--workdir` at a legacy
 Orbax directory with checkpoints but no `wandb_run.json`, pass
 `--wandb-run-id <existing_run_id>` once; otherwise the adapter aborts instead
-of creating a fresh W&B run by accident.
+of creating a fresh W&B run by accident. If you omit `--exp-name` while
+pointing at an existing workdir, the adapter now recovers the stored resume
+name from `wandb_run.json` when present, otherwise it falls back to the
+basename of the workdir.
 
 ```bash
 python3 src_jax/sample.py \
@@ -381,7 +386,7 @@ Key behavior:
 - In the shipped CelebA `moe1` TPU notebooks, the final Stage 2 train/resume cells point `--data-path` at `/kaggle/working/celeba256_imgfolder`, keep `eval.data_path` on the `val` split, standardize loader overrides to `training.num_workers=16`, `training.prefetch_factor=4`, and `eval.prefetch_factor=4`, enable `training.log_rae_latent_stats=true` plus `training.log_activation_stats=true`, and set `RAE_JAX_REBUILD_BACKEND=1` so the backend overlay reliably picks up the new `sit_gmm_moe1` interface on fresh Kaggle sessions.
 - the shipped TPU notebooks on this branch now also default `export PROJECT="moe-diffusion"`; the existing `run_name` strings already encode the dataset, backbone, `moe1`, and TPU pipeline, so no extra suffix was added to the experiment name.
 - `raes-jax-celeba-kaggle-tpuv5e8-sitdh-b-moe1-resume.ipynb` is the resume-only Kaggle TPU notebook for the latest `CelebA256_SiTDH-B_DINOv2-B_moe1_jax_tpuv5e8-*` Orbax workdir, keeps the persisted `celeba256_source_gmm.npz` artifact in place, and now expects either the persisted `wandb_run.json` binding file or a one-time `--wandb-run-id <existing_run_id>` for legacy workdirs.
-- Branch này cũng giữ song song bộ notebook TPU `moe1` cho CelebA-HQ: `raes-jax-celebahq-kaggle-tpuv5e8-sitdh-s-moe1.ipynb`, `raes-jax-celebahq-kaggle-tpuv5e8-sitdh-b-moe1.ipynb`, và `raes-jax-celebahq-kaggle-tpuv5e8-sitdh-b-moe1-resume.ipynb`, để cùng chung code learned-source nhưng tách workflow dữ liệu/runs theo pipeline HQ.
+- Branch này cũng giữ song song bộ notebook TPU `moe1` cho CelebA-HQ: `raes-jax-celebahq-kaggle-tpuv5e8-sitdh-b-moe1.ipynb` và `raes-jax-celebahq-kaggle-tpuv5e8-sitdh-b-moe1-resume.ipynb`, để cùng chung code learned-source nhưng tách workflow dữ liệu/runs theo pipeline HQ.
 
 Current limitation:
 
