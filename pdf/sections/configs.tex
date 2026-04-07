@@ -187,9 +187,10 @@ source:
   feature cho GMM. Trên branch DH, mode mặc định giờ là
   \texttt{flatten}: latent RAE \texttt{16 x 16 x 768} được giữ nguyên thành
   vector \texttt{196608} chiều khi fit GMM. Builder vẫn preallocate đúng một
-  ma trận \texttt{N x D} kiểu \texttt{float32} và standardize in-place, nên
-  full latent vector không còn cần memmap trên đĩa chỉ để né thêm bản copy
-  RAM. Khi cần feature nén có cấu trúc hơn thì vẫn có thể ép
+  ma trận \texttt{N x D}, nhưng \texttt{--storage-dtype auto} sẽ tự chọn
+  \texttt{float16} cho full-latent DH để giảm gần một nửa RAM host, còn
+  \texttt{--compute-dtype auto} sẽ upcast từng chunk EM/KMeans về
+  \texttt{float32}. Khi cần feature nén có cấu trúc hơn thì vẫn có thể ép
   \texttt{pyramid\_16k}; chỉ dùng \texttt{spatial\_mean} khi cần fallback tiết
   kiệm RAM;
   \item \texttt{num\_modes} là số component GMM đồng thời là số expert của MoE;

@@ -472,10 +472,12 @@ full `ImageFolder` root and still evaluate on `val`.
 For this DH branch, `src_jax/build_source_gmm.py` now defaults to
 `--feature-extractor flatten`, so the offline GMM keeps the full
 `16 x 16 x 768 -> 196608` latent vector by default. The builder still follows
-the low-copy path: it preallocates one `N x D` float32 matrix and standardizes
-it in place, so full-latent fitting no longer needs disk-backed memmaps just
-to avoid extra RAM copies. `--feature-extractor pyramid_16k` remains available
-when you explicitly want a structured compressed feature, and
+the low-copy path, but it no longer assumes the backing matrix must stay in
+`float32`: `--storage-dtype auto` resolves large flattened DH runs to
+`float16`, while `--compute-dtype auto` upcasts each EM/KMeans chunk back to
+`float32` during the fit. That keeps the full-latent recipe practical on large
+hosts without forcing disk-backed memmaps. `--feature-extractor pyramid_16k`
+remains available when you explicitly want a structured compressed feature, and
 `--feature-extractor spatial_mean` stays the low-RAM fallback.
 
 For Kaggle `TPU v5e-8`, use

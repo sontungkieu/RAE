@@ -226,6 +226,51 @@ def standardize_latents_inplace(
     return latents_flat
 
 
+def _normalize_numpy_dtype(dtype: str | np.dtype | type[np.floating]) -> np.dtype:
+    normalized = np.dtype(dtype)
+    if normalized not in {np.dtype(np.float16), np.dtype(np.float32)}:
+        raise ValueError(f"Unsupported numpy dtype for GMM fitting: {dtype!r}")
+    return normalized
+
+
+def _resolve_fit_compute_dtype(
+    fit_compute_dtype: str | np.dtype | type[np.floating],
+) -> np.dtype:
+    if isinstance(fit_compute_dtype, str):
+        requested = fit_compute_dtype.strip().lower()
+        if requested == "auto":
+            return np.dtype(np.float32)
+        return _normalize_numpy_dtype(requested)
+    return _normalize_numpy_dtype(fit_compute_dtype)
+
+
+def _cast_chunk_for_compute(
+    latents_flat: np.ndarray,
+    start: int,
+    stop: int,
+    *,
+    compute_dtype: np.dtype,
+) -> np.ndarray:
+    chunk = latents_flat[start:stop]
+    if chunk.dtype != compute_dtype:
+        return chunk.astype(compute_dtype, copy=False)
+    return chunk
+
+
+def _standardized_chunk(
+    latents_flat: np.ndarray,
+    start: int,
+    stop: int,
+    *,
+    latent_mean: np.ndarray,
+    latent_std: np.ndarray,
+    standardize_eps: float,
+    compute_dtype: np.dtype,
+) -> np.ndarray:
+    chunk = _cast_chunk_for_compute(latents_flat, start, stop, compute_dtype=compute_dtype)
+    return standardize_latents(chunk, latent_mean, latent_std, standardize_eps)
+
+
 def _logsumexp_np(values: np.ndarray, axis: int = -1, keepdims: bool = False) -> np.ndarray:
     max_values = np.max(values, axis=axis, keepdims=True)
     shifted = np.exp(values - max_values)
@@ -312,11 +357,15 @@ def compute_active_modes(
 
 
 def _chunk_em_stats(
-    latents_std: np.ndarray,
+    latents_flat: np.ndarray,
     log_pi: np.ndarray,
     mu: np.ndarray,
     var: np.ndarray,
     *,
+    latent_mean: np.ndarray,
+    latent_std: np.ndarray,
+    standardize_eps: float,
+    compute_dtype: np.dtype,
     chunk_size: int,
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray, float]:
     num_modes, dim = mu.shape
@@ -325,67 +374,124 @@ def _chunk_em_stats(
     sum_x2 = np.zeros((num_modes, dim), dtype=np.float64)
     total_nll = 0.0
 
-    for start in range(0, latents_std.shape[0], chunk_size):
-        chunk = latents_std[start : start + chunk_size]
+    mean_compute = latent_mean.astype(compute_dtype, copy=False)
+    std_compute = latent_std.astype(compute_dtype, copy=False)
+    for start in range(0, latents_flat.shape[0], chunk_size):
+        stop = start + chunk_size
+        chunk = _standardized_chunk(
+            latents_flat,
+            start,
+            stop,
+            latent_mean=mean_compute,
+            latent_std=std_compute,
+            standardize_eps=standardize_eps,
+            compute_dtype=compute_dtype,
+        )
         log_prob = diag_gmm_log_prob_np(chunk, log_pi, mu, var)
         log_norm = _logsumexp_np(log_prob, axis=-1, keepdims=True)
         resp = np.exp(log_prob - log_norm)
-        counts += resp.sum(axis=0, dtype=np.float64)
-        sum_x += resp.T @ chunk
-        sum_x2 += resp.T @ np.square(chunk)
+        resp64 = resp.astype(np.float64, copy=False)
+        chunk64 = chunk.astype(np.float64, copy=False)
+        counts += resp64.sum(axis=0, dtype=np.float64)
+        sum_x += resp64.T @ chunk64
+        sum_x2 += resp64.T @ np.square(chunk64)
         total_nll += float((-log_norm.squeeze(-1)).sum(dtype=np.float64))
 
-    return counts, sum_x, sum_x2, total_nll / float(latents_std.shape[0])
+    return counts, sum_x, sum_x2, total_nll / float(latents_flat.shape[0])
 
 
 def _compute_train_nll(
-    latents_std: np.ndarray,
+    latents_flat: np.ndarray,
     log_pi: np.ndarray,
     mu: np.ndarray,
     var: np.ndarray,
     *,
+    latent_mean: np.ndarray,
+    latent_std: np.ndarray,
+    standardize_eps: float,
+    compute_dtype: np.dtype,
     chunk_size: int,
 ) -> float:
     total_nll = 0.0
-    for start in range(0, latents_std.shape[0], chunk_size):
-        chunk = latents_std[start : start + chunk_size]
+    mean_compute = latent_mean.astype(compute_dtype, copy=False)
+    std_compute = latent_std.astype(compute_dtype, copy=False)
+    for start in range(0, latents_flat.shape[0], chunk_size):
+        stop = start + chunk_size
+        chunk = _standardized_chunk(
+            latents_flat,
+            start,
+            stop,
+            latent_mean=mean_compute,
+            latent_std=std_compute,
+            standardize_eps=standardize_eps,
+            compute_dtype=compute_dtype,
+        )
         log_prob = diag_gmm_log_prob_np(chunk, log_pi, mu, var)
         log_norm = _logsumexp_np(log_prob, axis=-1, keepdims=False)
         total_nll += float((-log_norm).sum(dtype=np.float64))
-    return total_nll / float(latents_std.shape[0])
+    return total_nll / float(latents_flat.shape[0])
 
 
 def _sample_data_rows(
-    latents_std: np.ndarray,
+    latents_flat: np.ndarray,
     count: int,
     rng: np.random.Generator,
+    *,
+    latent_mean: np.ndarray,
+    latent_std: np.ndarray,
+    standardize_eps: float,
+    compute_dtype: np.dtype,
 ) -> np.ndarray:
-    indices = rng.integers(0, latents_std.shape[0], size=count)
-    return latents_std[indices].copy()
+    indices = rng.integers(0, latents_flat.shape[0], size=count)
+    rows = latents_flat[indices]
+    if rows.dtype != compute_dtype:
+        rows = rows.astype(compute_dtype, copy=False)
+    mean_compute = latent_mean.astype(compute_dtype, copy=False)
+    std_compute = latent_std.astype(compute_dtype, copy=False)
+    return np.asarray(
+        standardize_latents(rows, mean_compute, std_compute, standardize_eps),
+        dtype=compute_dtype,
+    )
 
 
 def kmeanspp_init(
-    latents_std: np.ndarray,
+    latents_flat: np.ndarray,
     *,
+    latent_mean: np.ndarray,
+    latent_std: np.ndarray,
+    standardize_eps: float,
     num_modes: int,
     rng: np.random.Generator,
+    compute_dtype: np.dtype,
     chunk_size: int,
 ) -> np.ndarray:
-    num_samples, dim = latents_std.shape
+    num_samples, dim = latents_flat.shape
     if num_samples < num_modes:
         raise ValueError(
             f"Need at least as many samples as modes. Got {num_samples} samples for {num_modes} modes."
         )
 
-    centers = np.zeros((num_modes, dim), dtype=np.float32)
+    centers = np.zeros((num_modes, dim), dtype=compute_dtype)
+    mean_compute = latent_mean.astype(compute_dtype, copy=False)
+    std_compute = latent_std.astype(compute_dtype, copy=False)
     first_idx = int(rng.integers(0, num_samples))
-    centers[0] = latents_std[first_idx]
+    first_row = _cast_chunk_for_compute(latents_flat, first_idx, first_idx + 1, compute_dtype=compute_dtype)
+    centers[0] = standardize_latents(first_row, mean_compute, std_compute, standardize_eps)[0]
     min_distances = np.full((num_samples,), np.inf, dtype=np.float64)
 
     for center_idx in range(1, num_modes):
         previous_center = centers[center_idx - 1][None, :]
         for start in range(0, num_samples, chunk_size):
-            chunk = latents_std[start : start + chunk_size]
+            stop = start + chunk_size
+            chunk = _standardized_chunk(
+                latents_flat,
+                start,
+                stop,
+                latent_mean=mean_compute,
+                latent_std=std_compute,
+                standardize_eps=standardize_eps,
+                compute_dtype=compute_dtype,
+            )
             distances = np.sum(np.square(chunk - previous_center), axis=-1, dtype=np.float64)
             min_distances[start : start + chunk.shape[0]] = np.minimum(
                 min_distances[start : start + chunk.shape[0]],
@@ -394,13 +500,22 @@ def kmeanspp_init(
 
         total_distance = float(np.sum(min_distances))
         if not np.isfinite(total_distance) or total_distance <= 0.0:
-            fallback = _sample_data_rows(latents_std, num_modes - center_idx, rng)
+            fallback = _sample_data_rows(
+                latents_flat,
+                num_modes - center_idx,
+                rng,
+                latent_mean=latent_mean,
+                latent_std=latent_std,
+                standardize_eps=standardize_eps,
+                compute_dtype=compute_dtype,
+            )
             centers[center_idx:] = fallback
             break
 
         probs = min_distances / total_distance
         next_idx = int(rng.choice(num_samples, p=probs))
-        centers[center_idx] = latents_std[next_idx]
+        next_row = _cast_chunk_for_compute(latents_flat, next_idx, next_idx + 1, compute_dtype=compute_dtype)
+        centers[center_idx] = standardize_latents(next_row, mean_compute, std_compute, standardize_eps)[0]
 
     return centers
 
@@ -422,53 +537,81 @@ def fit_diag_gmm(
     latent_semantics: str = "latent_encoded_output",
     vae_scale_factor: float = 1.0,
     feature_extractor: str = "flatten",
+    fit_compute_dtype: str | np.dtype | type[np.floating] = "auto",
 ) -> GMMArtifact:
     if latents_flat.ndim != 2:
         raise ValueError(f"Expected 2D latent array, got shape {latents_flat.shape}.")
     if latents_flat.shape[0] == 0:
         raise ValueError("Cannot fit GMM on an empty latent array.")
 
-    latents_flat = np.asarray(latents_flat, dtype=np.float32)
+    latents_flat = np.asarray(latents_flat)
+    storage_dtype = _normalize_numpy_dtype(latents_flat.dtype)
+    if latents_flat.dtype != storage_dtype:
+        latents_flat = np.asarray(latents_flat, dtype=storage_dtype)
     if not latents_flat.flags["C_CONTIGUOUS"]:
-        latents_flat = np.ascontiguousarray(latents_flat, dtype=np.float32)
+        latents_flat = np.ascontiguousarray(latents_flat, dtype=storage_dtype)
     latent_mean, latent_std = compute_standardization_stats(latents_flat, eps=standardize_eps)
-    latents_std = standardize_latents_inplace(latents_flat, latent_mean, latent_std, standardize_eps)
-
-    global_var = np.maximum(latents_std.var(axis=0, dtype=np.float64).astype(np.float32), var_floor)
+    compute_dtype = _resolve_fit_compute_dtype(fit_compute_dtype)
+    raw_var = np.square(latent_std.astype(np.float64))
+    global_var = np.maximum(
+        (raw_var / np.square(latent_std.astype(np.float64) + standardize_eps)).astype(np.float32),
+        var_floor,
+    )
     best_artifact: GMMArtifact | None = None
     best_nll = float("inf")
 
     for restart_idx in range(em_restarts):
         rng = np.random.default_rng(seed + restart_idx)
-        mu = kmeanspp_init(latents_std, num_modes=num_modes, rng=rng, chunk_size=chunk_size)
-        var = np.broadcast_to(global_var[None, :], (num_modes, global_var.shape[0])).copy()
-        log_pi = np.full((num_modes,), -np.log(float(num_modes)), dtype=np.float32)
+        mu = kmeanspp_init(
+            latents_flat,
+            latent_mean=latent_mean,
+            latent_std=latent_std,
+            standardize_eps=standardize_eps,
+            num_modes=num_modes,
+            rng=rng,
+            compute_dtype=compute_dtype,
+            chunk_size=chunk_size,
+        )
+        var = np.broadcast_to(global_var[None, :], (num_modes, global_var.shape[0])).astype(compute_dtype, copy=True)
+        log_pi = np.full((num_modes,), -np.log(float(num_modes)), dtype=compute_dtype)
         previous_nll: float | None = None
         counts = np.zeros((num_modes,), dtype=np.float64)
         n_iter = 0
 
         for iteration_idx in range(em_iters):
             counts, sum_x, sum_x2, train_nll = _chunk_em_stats(
-                latents_std,
+                latents_flat,
                 log_pi,
                 mu,
                 var,
+                latent_mean=latent_mean,
+                latent_std=latent_std,
+                standardize_eps=standardize_eps,
+                compute_dtype=compute_dtype,
                 chunk_size=chunk_size,
             )
             safe_counts = np.maximum(counts, 1e-12)
-            mu_new = (sum_x / safe_counts[:, None]).astype(np.float32)
-            second_moment = (sum_x2 / safe_counts[:, None]).astype(np.float32)
-            var_new = np.maximum(second_moment - np.square(mu_new), var_floor).astype(np.float32)
+            mu_new = (sum_x / safe_counts[:, None]).astype(compute_dtype)
+            second_moment = (sum_x2 / safe_counts[:, None]).astype(compute_dtype)
+            var_new = np.maximum(second_moment - np.square(mu_new), var_floor).astype(compute_dtype)
 
             dead_mask = counts < dead_count_threshold
             if np.any(dead_mask):
                 dead_count = int(np.sum(dead_mask))
-                mu_new[dead_mask] = _sample_data_rows(latents_std, dead_count, rng)
+                mu_new[dead_mask] = _sample_data_rows(
+                    latents_flat,
+                    dead_count,
+                    rng,
+                    latent_mean=latent_mean,
+                    latent_std=latent_std,
+                    standardize_eps=standardize_eps,
+                    compute_dtype=compute_dtype,
+                )
                 var_new[dead_mask] = global_var
 
             counts_with_prior = counts + weight_prior
             pi_new = counts_with_prior / np.sum(counts_with_prior)
-            log_pi_new = np.log(np.maximum(pi_new, 1e-12)).astype(np.float32)
+            log_pi_new = np.log(np.maximum(pi_new, 1e-12)).astype(compute_dtype)
 
             mu = mu_new
             var = var_new
@@ -482,13 +625,27 @@ def fit_diag_gmm(
                     break
             previous_nll = train_nll
 
-        final_nll = _compute_train_nll(latents_std, log_pi, mu, var, chunk_size=chunk_size)
+        final_nll = _compute_train_nll(
+            latents_flat,
+            log_pi,
+            mu,
+            var,
+            latent_mean=latent_mean,
+            latent_std=latent_std,
+            standardize_eps=standardize_eps,
+            compute_dtype=compute_dtype,
+            chunk_size=chunk_size,
+        )
         if final_nll < best_nll:
             final_counts, _, _, _ = _chunk_em_stats(
-                latents_std,
+                latents_flat,
                 log_pi,
                 mu,
                 var,
+                latent_mean=latent_mean,
+                latent_std=latent_std,
+                standardize_eps=standardize_eps,
+                compute_dtype=compute_dtype,
                 chunk_size=chunk_size,
             )
             best_nll = final_nll

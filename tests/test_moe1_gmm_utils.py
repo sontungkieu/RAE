@@ -117,6 +117,35 @@ class Moe1GmmUtilsTests(unittest.TestCase):
         self.assertEqual(loaded.vae_scale_factor, 1.0)
         self.assertEqual(loaded.feature_extractor, "flatten")
 
+    def test_fit_diag_gmm_supports_float16_storage_with_float32_compute(self) -> None:
+        rng = np.random.default_rng(11)
+        cluster_a = rng.normal(loc=-0.8, scale=0.15, size=(24, 6)).astype(np.float16)
+        cluster_b = rng.normal(loc=0.9, scale=0.18, size=(24, 6)).astype(np.float16)
+        latents = np.concatenate([cluster_a, cluster_b], axis=0)
+
+        artifact = fit_diag_gmm(
+            latents,
+            num_modes=2,
+            seed=5,
+            em_iters=30,
+            em_restarts=2,
+            chunk_size=12,
+            fit_compute_dtype="float32",
+        )
+
+        posterior = posterior_from_stats(
+            latents[:4].astype(np.float32),
+            latent_mean=artifact.latent_mean,
+            latent_std=artifact.latent_std,
+            standardize_eps=artifact.standardize_eps,
+            log_pi=artifact.log_pi,
+            mu=artifact.mu,
+            var=artifact.var,
+        )
+        np.testing.assert_allclose(np.asarray(posterior).sum(axis=-1), 1.0, atol=1e-5)
+        self.assertEqual(artifact.mu.dtype, np.float32)
+        self.assertEqual(artifact.var.dtype, np.float32)
+
     def test_compute_active_modes_uses_fraction_threshold(self) -> None:
         counts = np.asarray([50.0, 25.0, 20.0, 5.0], dtype=np.float32)
         self.assertEqual(

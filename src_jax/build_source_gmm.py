@@ -53,6 +53,24 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--standardize-eps", type=float, default=1e-6)
     parser.add_argument("--chunk-size", type=int, default=256)
     parser.add_argument(
+        "--storage-dtype",
+        choices=["auto", "float16", "float32"],
+        default="auto",
+        help=(
+            "Backing dtype for the offline feature matrix. "
+            "For large DH flatten runs, 'auto' uses float16 storage to cut host RAM roughly in half."
+        ),
+    )
+    parser.add_argument(
+        "--compute-dtype",
+        choices=["auto", "float16", "float32"],
+        default="auto",
+        help=(
+            "Chunk dtype used during the offline GMM fit. "
+            "'auto' resolves to float32, so float16 storage can still upcast during EM."
+        ),
+    )
+    parser.add_argument(
         "--feature-extractor",
         choices=["auto", "flatten", "spatial_mean", "pyramid_16k"],
         default="flatten",
@@ -82,8 +100,29 @@ def _flatten_feature_batch(features: np.ndarray) -> np.ndarray:
     return features.reshape((features.shape[0], -1))
 
 
-def _estimate_feature_matrix_gib(num_rows: int, feature_dim: int) -> float:
-    bytes_total = int(num_rows) * int(feature_dim) * np.dtype(np.float32).itemsize
+def _resolve_storage_dtype(
+    *,
+    requested: str,
+    feature_extractor: str,
+    feature_dim: int,
+) -> np.dtype:
+    requested = str(requested).strip().lower()
+    if requested == "auto":
+        if feature_extractor == "flatten" and feature_dim > 16384:
+            return np.dtype(np.float16)
+        return np.dtype(np.float32)
+    return np.dtype(requested)
+
+
+def _resolve_compute_dtype(requested: str) -> str:
+    requested = str(requested).strip().lower()
+    if requested == "auto":
+        return "float32"
+    return requested
+
+
+def _estimate_feature_matrix_gib_for_dtype(num_rows: int, feature_dim: int, dtype: np.dtype) -> float:
+    bytes_total = int(num_rows) * int(feature_dim) * dtype.itemsize
     return bytes_total / float(1024**3)
 
 
@@ -119,16 +158,23 @@ def run_build_source_gmm(args: argparse.Namespace) -> Path:
             )
             feature_batch = _flatten_feature_batch(first_features)
             feature_shape = tuple(int(dim) for dim in feature_batch.shape[1:])
-            estimated_gib = _estimate_feature_matrix_gib(total, feature_batch.shape[1])
+            storage_dtype = _resolve_storage_dtype(
+                requested=args.storage_dtype,
+                feature_extractor=feature_extractor,
+                feature_dim=feature_batch.shape[1],
+            )
+            compute_dtype = _resolve_compute_dtype(args.compute_dtype)
+            estimated_gib = _estimate_feature_matrix_gib_for_dtype(total, feature_batch.shape[1], storage_dtype)
             print(
                 "[source-gmm] using feature_extractor="
                 f"{feature_extractor} for latent_shape={latent_shape} -> feature_shape={feature_shape}"
             )
             print(
                 f"[source-gmm] preallocating feature matrix of shape=({total}, {feature_batch.shape[1]}) "
-                f"~ {estimated_gib:.2f} GiB"
+                f"dtype={storage_dtype.name} ~ {estimated_gib:.2f} GiB; gmm_compute_dtype={compute_dtype}"
             )
-            feature_matrix = np.empty((total, feature_batch.shape[1]), dtype=np.float32)
+            feature_matrix = np.empty((total, feature_batch.shape[1]), dtype=storage_dtype)
+            feature_batch = np.asarray(feature_batch, dtype=storage_dtype)
         else:
             feature_batch = _flatten_feature_batch(
                 np.asarray(
@@ -136,6 +182,7 @@ def run_build_source_gmm(args: argparse.Namespace) -> Path:
                     dtype=np.float32,
                 )
             )
+            feature_batch = np.asarray(feature_batch, dtype=feature_matrix.dtype if feature_matrix is not None else np.float32)
         batch_size = int(feature_batch.shape[0])
         if feature_matrix is None:
             raise RuntimeError("Feature matrix was not initialized.")
@@ -164,6 +211,7 @@ def run_build_source_gmm(args: argparse.Namespace) -> Path:
         latent_semantics=latent_semantics,
         vae_scale_factor=vae_scale_factor,
         feature_extractor=feature_extractor,
+        fit_compute_dtype=_resolve_compute_dtype(args.compute_dtype),
     )
     artifact = dataclasses.replace(
         artifact,
