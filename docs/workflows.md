@@ -215,6 +215,11 @@ Resume / initialize behavior:
   W&B run ID, and auto-rewind W&B history to the latest `checkpoint_*` step via
   `resume_from`, so post-checkpoint logs from a crashed session do not survive
   into the resumed history.
+- Once a resumed training run finishes loading that Orbax checkpoint into
+  memory, the runtime now deletes the on-disk `checkpoint_*` directory
+  immediately. Before writing a later checkpoint, the runtime also clears any
+  older `checkpoint_*` directories first, so the workdir never needs free space
+  for two Orbax checkpoints at the same time.
 - If a legacy Orbax workdir already has checkpoints but predates
   `wandb_run.json`, pass `--wandb-run-id <existing_run_id>` once so the
   adapter can persist the exact historical run binding before training
