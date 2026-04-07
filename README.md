@@ -33,10 +33,8 @@ Use the docs folder as the detailed guide for this branch:
 - [docs/workflows.md](docs/workflows.md): practical runbooks for XLA and JAX/NNX training, sampling, and FID
 - [docs/config-reference.md](docs/config-reference.md): YAML schema reference
 - [pdf/main.pdf](pdf/main.pdf): detailed Vietnamese PDF for architecture, workflow, config, and operations
-- [raes-jax-celeba-kaggle-tpuv5e8-sitdh-s.ipynb](raes-jax-celeba-kaggle-tpuv5e8-sitdh-s.ipynb): Kaggle notebook tuned for `TPU v5e-8` for the `SiTDH-S` CelebA variant, syncing repo dependencies into `/tmp/.venv` via `uv sync`, applying the automatic `jaxlib` executable-stack fix for Kaggle, keeping host-side CPU FID, and defaulting to a Stage 2 checkpoint cadence of `210000` steps
 - [raes-jax-celeba-kaggle-tpuv5e8-sitdh-b.ipynb](raes-jax-celeba-kaggle-tpuv5e8-sitdh-b.ipynb): sibling Kaggle `TPU v5e-8` notebook that keeps the same `/tmp/.venv` + `uv sync` flow but switches Stage 2 to the DH/two-tower `SiTDH-B` CelebA recipe (`hidden_size=[768, 2048]`, `depth=[12, 2]`, `num_heads=[12, 16]`, `use_pos_embed=true`) with `class_dropout_prob=0.0`, while keeping the default checkpoint cadence at `210000` steps
 - [raes-jax-celeba-kaggle-tpuv5e8-sitdh-b-resume.ipynb](raes-jax-celeba-kaggle-tpuv5e8-sitdh-b-resume.ipynb): minimal Kaggle `TPU v5e-8` resume-only notebook for the `SiTDH-B` variant, starting by unzipping the previous notebook `_output_.zip` back into `/kaggle/working`, then rebuilding only the `uv` environment and auto-detecting both the newest `CelebA256_SiTDH-B_DINOv2-B_jax_tpuv5e8-*` Orbax run directory and its newest `checkpoint_*`, with strict W&B reuse once the workdir has `wandb_run.json` or you bind a legacy run with `--wandb-run-id`
-- [raes-jax-celebahq-kaggle-tpuv5e8-sitdh-s.ipynb](raes-jax-celebahq-kaggle-tpuv5e8-sitdh-s.ipynb): `TPU v5e-8` notebook for the `SiTDH-S` CelebA-HQ variant
 - [raes-jax-celebahq-kaggle-tpuv5e8-sitdh-b.ipynb](raes-jax-celebahq-kaggle-tpuv5e8-sitdh-b.ipynb): `TPU v5e-8` notebook for the `SiTDH-B` CelebA-HQ variant
 - [raes-jax-celebahq-kaggle-tpuv5e8-sitdh-b-resume.ipynb](raes-jax-celebahq-kaggle-tpuv5e8-sitdh-b-resume.ipynb): resume-only `TPU v5e-8` notebook for `CelebAHQ256_SiTDH-B_DINOv2-B_jax_tpuv5e8-*` runs
 
@@ -236,7 +234,10 @@ run continues from the checkpoint instead of keeping stale post-checkpoint
 history such as `120k -> 150k` after a crash. If you resume an older Orbax
 workdir that predates `wandb_run.json`, pass `--wandb-run-id <existing_run_id>`
 once so the adapter can bind that legacy workdir to the exact historical W&B
-run before continuing.
+run before continuing. When you pass `--workdir` without `--exp-name`, the JAX
+adapter now infers the resume experiment name from `wandb_run.json` when
+present, otherwise from the workdir basename, so resume launches do not need a
+second manual `--exp-name` override just to satisfy the strict W&B binding.
 
 Stage 2 training now logs the following namespaces:
 
@@ -372,11 +373,10 @@ Key behavior:
 - `ENTITY` / `PROJECT` / `WANDB_KEY` are bridged to the `WANDB_*` variables expected by the JAX backend.
 - `--hf-repo-id` on `src_jax/train.py` uploads the finished workdir directly to Hugging Face.
 - `src_jax/build_fid_stats.py` builds backend-native `fid_ref` files with the same Flax Inception detector used by JAX online FID.
-- `raes-jax-celeba-kaggle-tpuv5e8-sitdh-s.ipynb` copies that flow for `TPU v5e-8`, fixes the Stage 2 CelebA variant explicitly to `SiTDH-S`, disables label dropout for the single-class CelebA setup by setting `class_dropout_prob=0.0`, syncs the repo dependencies into `/tmp/.venv`, clears the `jaxlib` executable-stack flag that Kaggle can reject, verifies TPU visibility in a fresh Python process, builds the JAX `fid_ref` with the same backend detector used during online FID, and keeps the default Stage 2 checkpoint cadence at `210000` steps.
 - `raes-jax-celeba-kaggle-tpuv5e8-sitdh-b.ipynb` is the `TPU v5e-8` sibling notebook for the DH/two-tower `SiTDH-B` Stage 2 recipe, reusing the same Kaggle/JAX flow while writing a `CelebA256_SiTDH-B_DINOv2-B_jax_tpuv5e8.yaml` config, setting `hidden_size=[768, 2048]`, `depth=[12, 2]`, `num_heads=[12, 16]`, enabling `use_pos_embed`, disabling label dropout with `class_dropout_prob=0.0`, and keeping the same `210000`-step checkpoint cadence.
 - the shipped CelebA and CelebA-HQ Stage 2 DH notebooks on this branch now pin the same loader/diagnostic overrides: `training.num_workers=16`, `training.prefetch_factor=4`, `eval.prefetch_factor=4`, `training.log_rae_latent_stats=true`, and `training.log_activation_stats=true`.
 - the shipped TPU notebooks on this branch now also default `export PROJECT="moe-diffusion"`; the existing `run_name` strings already encode the dataset, backbone, and TPU pipeline, so no extra suffix was added to the experiment name.
-- the same branch now also keeps the parallel CelebA-HQ TPU notebook set and exporter helpers: `src_jax/export_celebahq_hf.py`, `src_jax/export_celebahq_tfds.py`, plus `raes-jax-celebahq-kaggle-tpuv5e8-*.ipynb` for the `SiTDH-S` and `SiTDH-B` 256 flows.
+- the same branch now also keeps the parallel CelebA-HQ TPU notebook set and exporter helpers: `src_jax/export_celebahq_hf.py`, `src_jax/export_celebahq_tfds.py`, plus `raes-jax-celebahq-kaggle-tpuv5e8-sitdh-b*.ipynb` for the `SiTDH-B` 256 flow.
 - `src_jax/train.py` now binds each JAX workdir to a persisted `wandb_run.json`; resume reuses that exact W&B run ID and auto-rewinds the W&B history to the latest Orbax checkpoint step, while legacy workdirs without metadata require a one-time `--wandb-run-id <existing_run_id>`.
 - `raes-jax-celeba-kaggle-tpuv5e8-sitdh-b-resume.ipynb` is now a stripped-down resume-only notebook: it first runs the old notebook archive extraction command `unzip -o /kaggle/input/notebooks/kieuhongquan/rae-jax/_output_.zip -d /kaggle/working`, then keeps only the minimal repo check, `uv sync`, Kaggle secret, path sanity check, and `src_jax/train.py --workdir ...` cells needed to locate the newest `CelebA256_SiTDH-B_DINOv2-B_jax_tpuv5e8-*` run under `/kaggle/working/results_jax_tpu/` and restore `latest_step()` from that run's newest `checkpoint_<step>/` directory. It now expects either the persisted `wandb_run.json` binding file or a one-time `--wandb-run-id <existing_run_id>` for legacy workdirs.
 

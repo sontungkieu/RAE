@@ -54,6 +54,22 @@ def _load_wandb_resume_metadata(path: Path) -> dict[str, str] | None:
     return {key: str(payload[key]) for key in required}
 
 
+def _resolve_stage2_exp_name(args: argparse.Namespace) -> str | None:
+    explicit_exp_name = getattr(args, "exp_name", None)
+    if explicit_exp_name:
+        return str(explicit_exp_name)
+
+    raw_workdir = getattr(args, "workdir", None)
+    if not raw_workdir:
+        return None
+
+    workdir = Path(str(raw_workdir)).expanduser().resolve()
+    metadata = _load_wandb_resume_metadata(_wandb_resume_metadata_path(workdir))
+    if metadata is not None:
+        return metadata["exp_name"]
+    return workdir.name
+
+
 def _latest_orbax_checkpoint_step(workdir: Path) -> int | None:
     latest_step: int | None = None
     for path in workdir.glob("checkpoint_*"):
@@ -1255,6 +1271,7 @@ def run_stage2_training(args: argparse.Namespace) -> Path:
     if not args.data_path:
         raise ValueError("--data-path is required for Stage-2 JAX training.")
 
+    resolved_exp_name = _resolve_stage2_exp_name(args)
     repo_cfg, config_path = load_repo_config(args.config, args.set_values)
     backend_cfg_dict = build_backend_config_dict(
         repo_cfg,
@@ -1265,7 +1282,7 @@ def run_stage2_training(args: argparse.Namespace) -> Path:
         precision=args.precision,
         seed=args.global_seed,
         num_train_samples=args.num_train_samples,
-        exp_name=args.exp_name,
+        exp_name=resolved_exp_name,
         wandb_project=args.wandb_project,
         enable_eval=True,
     )

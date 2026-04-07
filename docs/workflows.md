@@ -219,6 +219,9 @@ Resume / initialize behavior:
   `wandb_run.json`, pass `--wandb-run-id <existing_run_id>` once so the
   adapter can persist the exact historical run binding before training
   continues.
+- If you launch with `--workdir` but omit `--exp-name`, the adapter now
+  recovers the stored resume name from `wandb_run.json` when it exists,
+  otherwise it falls back to the workdir basename.
 
 ## 5. Enable wandb Logging
 
@@ -238,7 +241,8 @@ adapter bridges the legacy `ENTITY`, `PROJECT`, and `WANDB_KEY` names into the
 On the JAX path, `wandb_run.json` inside the workdir is now the source of truth
 for exact resume behavior. A later launch must match that stored binding, and
 the adapter rewinds the W&B run to the latest checkpoint step before logging
-continues.
+continues. Resume launches therefore no longer need a duplicate manual
+`--exp-name` override when they already point at the historical workdir.
 
 Current Stage 2 namespaces:
 
@@ -445,7 +449,7 @@ building FID references or comparing Stage 1 decoder changes.
 
 ### Kaggle CelebA Notebook
 
-Use [../raes-jax-celeba-kaggle-tpuv5e8-sitdh-s.ipynb](../raes-jax-celeba-kaggle-tpuv5e8-sitdh-s.ipynb) when you
+Use [../raes-jax-celeba-kaggle-tpuv5e8-sitdh-b.ipynb](../raes-jax-celeba-kaggle-tpuv5e8-sitdh-b.ipynb) when you
 want the shipped TPU Kaggle workflow end to end:
 
 - clone the repo and checkout `jax-sit-dh`
@@ -459,17 +463,9 @@ want the shipped TPU Kaggle workflow end to end:
 - write a CelebA Stage 2 config and launch `src_jax/train.py` on TPU
 
 For Kaggle `TPU v5e-8`, use
-[../raes-jax-celeba-kaggle-tpuv5e8-sitdh-s.ipynb](../raes-jax-celeba-kaggle-tpuv5e8-sitdh-s.ipynb).
-That copy fixes the Stage 2 CelebA variant to `SiTDH-S`, syncs the repo
-dependencies into `/tmp/.venv`, clears the `jaxlib` executable-stack flag that
-Kaggle can reject before each JAX import, runs the TPU device check in a fresh
-Python process, keeps Stage 1 and Stage 2 on TPU, builds the JAX `fid_ref` with
-the same backend detector used by online FID, and keeps the default checkpoint
-cadence at `210000` steps.
-
-If you want the same Kaggle TPU flow but with the `SiTDH-B` DH Stage 2 setup, use
 [../raes-jax-celeba-kaggle-tpuv5e8-sitdh-b.ipynb](../raes-jax-celeba-kaggle-tpuv5e8-sitdh-b.ipynb).
-That notebook keeps the same JAX/TPU workarounds and data prep, but writes the
+That notebook is now the shipped Kaggle TPU flow for this branch. It keeps the
+same JAX/TPU workarounds and data prep, but writes the
 CelebA Stage 2 config as `CelebA256_SiTDH-B_DINOv2-B_jax_tpuv5e8.yaml`,
 using the DH two-tower layout `hidden_size=[768, 2048]`, `depth=[12, 2]`,
 `num_heads=[12, 16]`, enabling `use_pos_embed`, disabling label dropout with
@@ -495,7 +491,6 @@ or `checkpoint_100000`. If the target workdir was created before
 resumed Kaggle session binds to the exact old W&B run instead of aborting.
 
 The same branch also keeps the parallel CelebA-HQ TPU workflow:
-[../raes-jax-celebahq-kaggle-tpuv5e8-sitdh-s.ipynb](../raes-jax-celebahq-kaggle-tpuv5e8-sitdh-s.ipynb),
 [../raes-jax-celebahq-kaggle-tpuv5e8-sitdh-b.ipynb](../raes-jax-celebahq-kaggle-tpuv5e8-sitdh-b.ipynb),
 and
 [../raes-jax-celebahq-kaggle-tpuv5e8-sitdh-b-resume.ipynb](../raes-jax-celebahq-kaggle-tpuv5e8-sitdh-b-resume.ipynb).

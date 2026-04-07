@@ -179,6 +179,9 @@ log chẩn đoán latent/activation bật mặc định.
   \item hỗ trợ \texttt{--set key=value} để override nhanh từ CLI;
   \item hỗ trợ \texttt{--wandb-run-id <existing\_run\_id>} để bind một
   legacy workdir với đúng W\&B run cũ đúng một lần;
+  \item nếu gọi resume với \texttt{--workdir} nhưng không truyền
+  \texttt{--exp-name}, adapter sẽ tự lấy tên run từ
+  \texttt{wandb\_run.json} khi có, nếu không thì dùng basename của workdir;
   \item nếu \texttt{stage\_2.ckpt} là file PyTorch \texttt{.pt}, adapter sẽ port
   trọng số sang NNX để khởi tạo;
   \item nếu \texttt{stage\_2.ckpt} là thư mục Orbax, adapter sẽ restore run JAX
@@ -204,7 +207,10 @@ id đã bind, rồi tự rewind W\&B history về latest \texttt{checkpoint\_*} 
 qua \texttt{resume\_from}. Nhờ đó phần metric đã log sau checkpoint cuối của
 session cũ sẽ không bị giữ lại sai lịch sử. Nếu resume một Orbax workdir cũ chưa có
 \texttt{wandb\_run.json}, cần truyền \texttt{--wandb-run-id <existing\_run\_id>}
-một lần để bind đúng historical run trước khi train tiếp.
+một lần để bind đúng historical run trước khi train tiếp. Khi đã có
+\texttt{wandb\_run.json}, launch resume không cần lặp lại thủ công
+\texttt{--exp-name}; adapter sẽ tự suy ra tên run từ metadata đó, hoặc từ tên
+thư mục workdir nếu metadata chưa có.
 
 \subsection{FID trong train loop}
 
@@ -292,7 +298,7 @@ python3 src_jax/train.py \
 
 \subsection{Notebook Kaggle TPU cho CelebA}
 
-Repo hiện ship notebook TPU \texttt{raes-jax-celeba-kaggle-tpuv5e8-sitdh-s.ipynb}
+Repo hiện ship notebook TPU \texttt{raes-jax-celeba-kaggle-tpuv5e8-sitdh-b.ipynb}
 để bám đúng flow Kaggle:
 
 \begin{itemize}[leftmargin=1.5em]
@@ -307,18 +313,15 @@ Repo hiện ship notebook TPU \texttt{raes-jax-celeba-kaggle-tpuv5e8-sitdh-s.ipy
 \end{itemize}
 
 Nếu chạy trên Kaggle \texttt{TPU v5e-8}, dùng notebook
-\texttt{raes-jax-celeba-kaggle-tpuv5e8-sitdh-s.ipynb}. Bản này cố định biến thể
-CelebA Stage 2 là \texttt{SiTDH-S}, sync dependency của repo vào
+\texttt{raes-jax-celeba-kaggle-tpuv5e8-sitdh-b.ipynb}. Bản này cố định biến thể
+CelebA Stage 2 là \texttt{SiTDH-B}, sync dependency của repo vào
 \texttt{/tmp/.venv}, tự xóa cờ executable-stack mà Kaggle có thể chặn trên
 \texttt{jaxlib}, chạy bước xác nhận TPU trong một tiến trình Python mới, giữ
 Stage 1 và Stage 2 ở TPU, đồng thời build \texttt{fid\_ref} bằng đúng detector
 backend dùng cho online FID, và giữ cadence checkpoint mặc định ở mốc
 \texttt{210000} step.
 
-Nếu muốn giữ nguyên flow đó nhưng đổi Stage 2 sang biến thể DH
-\texttt{SiTDH-B},
-dùng notebook \texttt{raes-jax-celeba-kaggle-tpuv5e8-sitdh-b.ipynb}. Notebook
-này ghi config CelebA thành
+Notebook này ghi config CelebA thành
 \texttt{CelebA256\_SiTDH-B\_DINOv2-B\_jax\_tpuv5e8.yaml}, đặt backbone DH thành
 \texttt{hidden\_size=[768, 2048]}, \texttt{depth=[12, 2]},
 \texttt{num\_heads=[12, 16]}, bật \texttt{use\_pos\_embed}, tắt label dropout
@@ -345,7 +348,6 @@ workdir đích là legacy run được tạo trước khi cơ chế
 chính run W\&B cũ đó.
 
 Branch này cũng giữ song song workflow TPU CelebA-HQ:
-\texttt{raes-jax-celebahq-kaggle-tpuv5e8-sitdh-s.ipynb},
 \texttt{raes-jax-celebahq-kaggle-tpuv5e8-sitdh-b.ipynb}, và
 \texttt{raes-jax-celebahq-kaggle-tpuv5e8-sitdh-b-resume.ipynb}. Chúng dùng lại
 pipeline JAX/Kaggle tương tự nhưng export dữ liệu CelebA-HQ 256. Merge này
