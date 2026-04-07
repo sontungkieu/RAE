@@ -240,7 +240,10 @@ run continues from the checkpoint instead of keeping stale post-checkpoint
 history such as `120k -> 150k` after a crash. If you resume an older Orbax
 workdir that predates `wandb_run.json`, pass `--wandb-run-id <existing_run_id>`
 once so the adapter can bind that legacy workdir to the exact historical W&B
-run before continuing.
+run before continuing. When you pass `--workdir` without `--exp-name`, the JAX
+adapter now infers the resume experiment name from `wandb_run.json` when
+present, otherwise from the workdir basename, so resume launches do not need a
+second manual `--exp-name` override just to satisfy the strict W&B binding.
 
 Stage 2 training now logs the following namespaces:
 

@@ -171,6 +171,9 @@ giữ metric ở stdout cùng wandb.
   \item hỗ trợ \texttt{--set key=value} để override nhanh từ CLI;
   \item hỗ trợ \texttt{--wandb-run-id <existing\_run\_id>} để bind một
   legacy workdir với đúng W\&B run cũ đúng một lần;
+  \item nếu gọi resume với \texttt{--workdir} nhưng không truyền
+  \texttt{--exp-name}, adapter sẽ tự lấy tên run từ
+  \texttt{wandb\_run.json} khi có, nếu không thì dùng basename của workdir;
   \item nếu \texttt{stage\_2.ckpt} là file PyTorch \texttt{.pt}, adapter sẽ port
   trọng số sang NNX để khởi tạo;
   \item nếu \texttt{stage\_2.ckpt} là thư mục Orbax, adapter sẽ restore run JAX
@@ -208,7 +211,10 @@ id đã bind, rồi tự rewind W\&B history về latest \texttt{checkpoint\_*} 
 qua \texttt{resume\_from}. Nhờ đó phần metric đã log sau checkpoint cuối của
 session cũ sẽ không bị giữ lại sai lịch sử. Nếu resume một Orbax workdir cũ chưa có
 \texttt{wandb\_run.json}, cần truyền \texttt{--wandb-run-id <existing\_run\_id>}
-một lần để bind đúng historical run trước khi train tiếp.
+một lần để bind đúng historical run trước khi train tiếp. Khi đã có
+\texttt{wandb\_run.json}, launch resume không cần lặp lại thủ công
+\texttt{--exp-name}; adapter sẽ tự suy ra tên run từ metadata đó, hoặc từ tên
+thư mục workdir nếu metadata chưa có.
 
 \subsection{FID trong train loop}
 

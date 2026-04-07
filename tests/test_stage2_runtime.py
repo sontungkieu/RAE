@@ -10,6 +10,7 @@ try:
     from src_jax.stage2_runtime import (
         _install_strict_wandb_initializer,
         _load_wandb_resume_metadata,
+        _resolve_stage2_exp_name,
         _resolve_wandb_resume_binding,
         _wandb_resume_metadata_path,
     )
@@ -17,6 +18,7 @@ try:
 except ModuleNotFoundError as exc:
     _install_strict_wandb_initializer = None
     _load_wandb_resume_metadata = None
+    _resolve_stage2_exp_name = None
     _resolve_wandb_resume_binding = None
     _wandb_resume_metadata_path = None
     _IMPORT_ERROR = exc
@@ -61,6 +63,28 @@ class _FakeWandbUtils:
 
 @unittest.skipIf(_IMPORT_ERROR is not None, f"Missing optional dependency: {_IMPORT_ERROR}")
 class Stage2RuntimeWandbTests(unittest.TestCase):
+    def test_resolve_stage2_exp_name_prefers_explicit_cli_value(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            args = SimpleNamespace(exp_name="cli-exp", workdir=tmp_dir)
+            self.assertEqual(_resolve_stage2_exp_name(args), "cli-exp")
+
+    def test_resolve_stage2_exp_name_uses_saved_wandb_metadata(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            workdir = Path(tmp_dir)
+            _wandb_resume_metadata_path(workdir).write_text(
+                '{"entity": "entity", "project": "project", "exp_name": "saved-exp", "run_id": "resume123"}',
+                encoding="utf-8",
+            )
+            args = SimpleNamespace(exp_name=None, workdir=str(workdir))
+            self.assertEqual(_resolve_stage2_exp_name(args), "saved-exp")
+
+    def test_resolve_stage2_exp_name_falls_back_to_workdir_name(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            workdir = Path(tmp_dir) / "custom-run-name"
+            workdir.mkdir()
+            args = SimpleNamespace(exp_name=None, workdir=str(workdir))
+            self.assertEqual(_resolve_stage2_exp_name(args), "custom-run-name")
+
     def test_new_workdir_generates_unique_run_id(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir:
             workdir = Path(tmp_dir)
