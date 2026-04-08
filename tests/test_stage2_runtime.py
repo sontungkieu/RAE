@@ -34,8 +34,9 @@ class _DummyConfig:
 
 
 class _FakeWandb:
-    def __init__(self, generated_ids: list[str] | None = None) -> None:
+    def __init__(self, generated_ids: list[str] | None = None, *, fail_on_rewind: bool = False) -> None:
         self._generated_ids = list(generated_ids or ["fresh123"])
+        self._fail_on_rewind = fail_on_rewind
         self.login_keys: list[str] = []
         self.calls: list[dict[str, object]] = []
         self.util = SimpleNamespace(generate_id=self._generate_id)
@@ -50,6 +51,10 @@ class _FakeWandb:
 
     def init(self, **kwargs: object) -> SimpleNamespace:
         self.calls.append(dict(kwargs))
+        if self._fail_on_rewind and "resume_from" in kwargs:
+            raise RuntimeError(
+                'failed to rewind run: returned error 400: {"data":{"rewindRun":null},"errors":[{"message":"Rewind is in private preview -- contact support@wandb.com to enable it.","path":["rewindRun"]}]}'
+            )
         run_id = kwargs.get("id")
         if run_id is None and "resume_from" in kwargs:
             run_id = str(kwargs["resume_from"]).split("?", 1)[0]
@@ -260,6 +265,30 @@ class Stage2RuntimeWandbTests(unittest.TestCase):
             self.assertEqual(fake_wandb.calls[0]["id"], "fresh123")
             self.assertEqual(fake_wandb.calls[0]["resume"], "never")
             self.assertEqual(fake_wandb.calls[1]["resume_from"], "fresh123?_step=120")
+
+    def test_initializer_falls_back_when_rewind_private_preview_is_unavailable(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            workdir = Path(tmp_dir)
+            (workdir / "checkpoint_000120").mkdir()
+            metadata_path = _wandb_resume_metadata_path(workdir)
+            metadata_path.write_text(
+                '{"entity": "entity", "project": "project", "exp_name": "exp-train", "run_id": "resume123"}',
+                encoding="utf-8",
+            )
+            fake_wandb = _FakeWandb(["unused123"], fail_on_rewind=True)
+            fake_utils = _FakeWandbUtils(fake_wandb)
+            _install_strict_wandb_initializer(fake_utils, workdir=workdir, explicit_run_id=None)
+
+            with patch.dict(
+                "os.environ",
+                {"WANDB_API_KEY": "token", "WANDB_ENTITY": "entity"},
+                clear=False,
+            ):
+                fake_utils.initialize(_DummyConfig(), exp_name="exp-train", project_name="project")
+
+            self.assertEqual(fake_wandb.calls[0]["resume_from"], "resume123?_step=120")
+            self.assertEqual(fake_wandb.calls[1]["id"], "resume123")
+            self.assertEqual(fake_wandb.calls[1]["resume"], "must")
 
     def test_stored_metadata_without_checkpoint_fails_fast(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir:
