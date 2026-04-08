@@ -202,25 +202,21 @@ export WANDB_KEY=<wandb_api_key>
 \texttt{WANDB\_API\_KEY}. Adapter sẽ bridge các tên legacy ở trên nếu chúng đã
 được export sẵn. Với \texttt{src\_jax/train.py}, mỗi workdir mới giờ sẽ ghi
 \texttt{wandb\_run.json} để khóa đúng W\&B run id của workdir đó. Run mới dùng
-\texttt{resume="never"}; các lần resume sau sẽ đọc lại file này, giữ đúng run
-id đã bind, rồi tự rewind W\&B history về latest \texttt{checkpoint\_*} step
-qua \texttt{resume\_from}. Nhờ đó phần metric đã log sau checkpoint cuối của
-session cũ sẽ không bị giữ lại sai lịch sử. Với train resume, runtime giờ sẽ xóa
-ngay thư mục \texttt{checkpoint\_*} vừa restore khỏi ổ đĩa sau khi state đã vào
-bộ nhớ; trước mỗi lần save checkpoint mới nó cũng xóa các
-\texttt{checkpoint\_*} cũ còn lại để workdir không cần chỗ cho hai Orbax
-checkpoint cùng lúc. Đường cleanup này giờ cũng chuẩn hóa cả \texttt{Path}
-lẫn workdir dạng chuỗi mà backend trainer truyền vào, nên resume DH/VAE không
-còn crash chỉ vì prune checkpoint với \texttt{str(workdir)}. Nếu resume một
-Orbax workdir cũ chưa có
-\texttt{wandb\_run.json}, cần truyền \texttt{--wandb-run-id <existing\_run\_id>}
-một lần để bind đúng historical run trước khi train tiếp. Khi đã có
-\texttt{wandb\_run.json}, launch resume không cần lặp lại thủ công
-\texttt{--exp-name}; adapter sẽ tự suy ra tên run từ metadata đó, hoặc từ tên
-thư mục workdir nếu metadata chưa có. Nếu account/workspace chưa được bật
-W\&B rewind private preview nên \texttt{resume\_from} bị từ chối, adapter sẽ tự
-fallback sang \texttt{id=<run\_id>, resume="must"} để launch resume không bị
-crash chỉ vì thiếu quyền rewind.
+\texttt{resume="never"}; các lần resume trực tiếp trên cùng workdir sau đó sẽ
+đọc lại file này, giữ đúng run id đã bind, rồi tự rewind W\&B history về
+latest \texttt{checkpoint\_*} step qua \texttt{resume\_from}. Nhờ đó phần
+metric đã log sau checkpoint cuối của session cũ sẽ không bị giữ lại sai lịch
+sử. Với train resume, runtime giờ sẽ xóa ngay thư mục \texttt{checkpoint\_*}
+vừa restore khỏi ổ đĩa sau khi state đã vào bộ nhớ; trước mỗi lần save
+checkpoint mới nó cũng xóa các \texttt{checkpoint\_*} cũ còn lại để workdir
+không cần chỗ cho hai Orbax checkpoint cùng lúc. Đường cleanup này giờ cũng
+chuẩn hóa cả \texttt{Path} lẫn workdir dạng chuỗi mà backend trainer truyền
+vào, nên resume DH/VAE không còn crash chỉ vì prune checkpoint với
+\texttt{str(workdir)}. Các notebook resume đóng gói sẵn trên branch learned
+source này không còn resume ngay trong workdir cũ nữa: chúng copy
+\texttt{checkpoint\_*} mới nhất sang một workdir mới có timestamp, seed một
+\texttt{wandb\_run.json} mới với run id mới, rồi giữ nguyên \texttt{exp\_name}
+gốc để lineage dễ đọc trong khi history W\&B của lần resume vẫn sạch.
 
 \subsection{FID trong train loop}
 
@@ -376,14 +372,13 @@ archive của notebook cũ: cell đầu chạy lệnh \texttt{unzip -o
 fix \texttt{jaxlib}, lấy secret wandb, kiểm tra path dataset/FID/GMM, rồi tự tìm thư mục
 \texttt{CelebA256\_SiTDH-B\_DINOv2-B\_moe1\_jax\_tpuv5e8-*} mới nhất bên dưới
 \texttt{/kaggle/working/results\_jax\_tpu/}, rồi mới tìm thư mục
-\texttt{checkpoint\_<step>/} mới nhất trong workdir đó trước khi truyền
+\texttt{checkpoint\_<step>/} mới nhất trong workdir đó, copy checkpoint này
+sang một workdir resume mới có timestamp, seed workdir mới bằng một
+\texttt{wandb\_run.json} mới với run id mới, rồi mới truyền
 \texttt{--workdir} vào \texttt{src\_jax/train.py}. Runtime tiếp tục restore
-\texttt{latest\_step()} từ checkpoint mới nhất, nên notebook này không còn
+\texttt{latest\_step()} từ checkpoint mới nhất, xóa ngay checkpoint vừa
+restore trong workdir mới sau khi state đã vào RAM, và notebook vẫn không còn
 hardcode cả thư mục run có timestamp lẫn \texttt{checkpoint\_100000}.
-Nếu workdir đích là legacy run được tạo trước khi cơ chế
-\texttt{wandb\_run.json} tồn tại, cần thêm
-\texttt{--wandb-run-id <existing\_run\_id>} một lần để notebook resume đúng
-chính run W\&B cũ đó.
 
 Branch này cũng giữ song song bộ notebook TPU CelebA-HQ cho learned-source:
 \texttt{raes-jax-celebahq-kaggle-tpuv5e8-sitdh-b-moe1.ipynb} và

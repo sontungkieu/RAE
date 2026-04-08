@@ -524,11 +524,13 @@ That notebook is intentionally stripped down for the common Kaggle resume case
 where you start from the archived output of the previous notebook. It checks
 that `/kaggle/working/RAE`, `/kaggle/working/celeba256_imgfolder`,
 `/kaggle/working/celeba256_val_fid_stats_cpu.pkl`, and
-`/kaggle/working/celeba256_source_gmm.npz` are present, then resumes the newest
+`/kaggle/working/celeba256_source_gmm.npz` are present, then finds the newest
 `CelebA256_SiTDH-B_DINOv2-B_moe1_jax_tpuv5e8-*` workdir under
-`/kaggle/working/results_jax_tpu/`. If the target workdir was created before
-`wandb_run.json` existed, pass `--wandb-run-id <existing_run_id>` once so the
-resumed Kaggle session binds to the exact old W&B run instead of aborting.
+`/kaggle/working/results_jax_tpu/`, copies its latest `checkpoint_*` into a
+fresh timestamped resume workdir, seeds that new workdir with a fresh
+`wandb_run.json`, and resumes from there. The resumed Kaggle session therefore
+keeps the original experiment name for lineage while logging to a brand-new
+W&B run instead of trying to reuse the old run history.
 
 This branch also keeps the parallel CelebA-HQ TPU `moe1` notebook set:
 [../raes-jax-celebahq-kaggle-tpuv5e8-sitdh-b-moe1.ipynb](../raes-jax-celebahq-kaggle-tpuv5e8-sitdh-b-moe1.ipynb) and

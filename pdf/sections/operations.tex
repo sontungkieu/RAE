@@ -172,9 +172,12 @@ python3 src_jax/train.py \
   \texttt{RAE\_JAX\_REBUILD\_BACKEND=1}, rồi tự tìm thư mục run
   \texttt{CelebA256\_SiTDH-B\_DINOv2-B\_moe1\_jax\_tpuv5e8-*} mới nhất bên dưới
   \texttt{/kaggle/working/results\_jax\_tpu/} và thư mục
-  \texttt{checkpoint\_<step>/} mới nhất trong workdir đó trước khi truyền
-  \texttt{--workdir} vào \texttt{src\_jax/train.py}. Runtime cũng tiếp
-  tục restore bằng \texttt{latest\_step()}, nên notebook này không còn hardcode
+  \texttt{checkpoint\_<step>/} mới nhất trong workdir đó, copy checkpoint này
+  sang một workdir resume mới có timestamp, seed workdir mới bằng một
+  \texttt{wandb\_run.json} mới với run id mới, rồi mới truyền
+  \texttt{--workdir} vào \texttt{src\_jax/train.py}. Runtime cũng tiếp tục
+  restore bằng \texttt{latest\_step()}, xóa ngay checkpoint vừa restore trong
+  workdir mới sau khi state đã vào RAM, nên notebook này không còn hardcode
   \texttt{checkpoint\_100000}.
   \item Nếu cần huấn luyện Stage 1 kiểu GAN đầy đủ, hiện vẫn phải xem đây là
   phần chưa được JAX hóa trong branch này.
