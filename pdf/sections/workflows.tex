@@ -347,20 +347,20 @@ archive của notebook cũ: cell đầu chạy lệnh \texttt{unzip -o
 /kaggle/working}, sau đó mới kiểm tra repo đã có sẵn, chạy \texttt{uv sync},
 fix \texttt{jaxlib}, lấy secret wandb, kiểm tra path, rồi tự tìm thư mục
 \texttt{CelebA256\_SiTDH-B\_DINOv2-B\_jax\_tpuv5e8-*} mới nhất bên dưới
-\texttt{/kaggle/working/results\_jax\_tpu/}, rồi mới tìm thư mục
-\texttt{checkpoint\_<step>/} mới nhất trong workdir đó trước khi truyền
-\texttt{--workdir} vào \texttt{src\_jax/train.py}. Runtime tiếp tục restore
-\texttt{latest\_step()} từ checkpoint mới nhất, nên notebook này không còn
-hardcode cả thư mục run có timestamp lẫn \texttt{checkpoint\_100000}. Nếu
-workdir đích là legacy run được tạo trước khi cơ chế
-\texttt{wandb\_run.json} tồn tại, cần thêm
-\texttt{--wandb-run-id <existing\_run\_id>} một lần để notebook resume đúng
-chính run W\&B cũ đó.
+\texttt{/kaggle/working/results\_jax\_tpu/}, copy thư mục
+\texttt{checkpoint\_<step>/} mới nhất từ source workdir đó sang một workdir
+resume mới có timestamp, ghi sẵn \texttt{wandb\_run.json} với run ID W\&B mới,
+rồi mới truyền \texttt{--workdir} vào \texttt{src\_jax/train.py}. Runtime tiếp
+tục restore \texttt{latest\_step()} từ checkpoint đã copy, còn notebook vẫn giữ
+\texttt{exp\_name} gốc để dễ truy vết. Vì vậy notebook này không còn hardcode
+cả thư mục run có timestamp lẫn \texttt{checkpoint\_100000}.
 
 Branch này cũng giữ song song workflow TPU CelebA-HQ:
 \texttt{raes-jax-celebahq-kaggle-tpuv5e8-sitdh-b.ipynb}, và
 \texttt{raes-jax-celebahq-kaggle-tpuv5e8-sitdh-b-resume.ipynb}. Chúng dùng lại
-pipeline JAX/Kaggle tương tự nhưng export dữ liệu CelebA-HQ 256. Merge này
-cũng khôi phục hai helper export riêng là
+pipeline JAX/Kaggle tương tự nhưng export dữ liệu CelebA-HQ 256. Notebook
+resume CelebA-HQ cũng đi theo flow copy checkpoint sang workdir mới, tạo run ID
+W\&B mới, nhưng vẫn giữ nguyên tên thí nghiệm gốc. Merge này cũng khôi phục hai
+helper export riêng là
 \texttt{src\_jax/export\_celebahq\_hf.py} và
 \texttt{src\_jax/export\_celebahq\_tfds.py}.

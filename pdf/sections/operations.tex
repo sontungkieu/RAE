@@ -146,10 +146,12 @@ python3 src_jax/train.py \
   /kaggle/working}, sau đó chỉ kiểm tra repo đã có sẵn, chạy \texttt{uv sync},
   lấy secret wandb, kiểm tra path, rồi tự tìm thư mục run
   \texttt{CelebA256\_SiTDH-B\_DINOv2-B\_jax\_tpuv5e8-*} mới nhất bên dưới
-  \texttt{/kaggle/working/results\_jax\_tpu/} và thư mục
-  \texttt{checkpoint\_<step>/} mới nhất trong workdir đó trước khi truyền
-  \texttt{--workdir} vào \texttt{src\_jax/train.py}. Runtime cũng tiếp
-  tục restore bằng \texttt{latest\_step()}, nên notebook này không còn hardcode
+  \texttt{/kaggle/working/results\_jax\_tpu/}, copy
+  \texttt{checkpoint\_<step>/} mới nhất sang workdir resume mới có timestamp,
+  tạo \texttt{wandb\_run.json} với run ID W\&B mới, rồi mới truyền
+  \texttt{--workdir} vào \texttt{src\_jax/train.py}. Runtime cũng tiếp tục
+  restore bằng \texttt{latest\_step()} từ checkpoint đã copy, còn notebook vẫn
+  giữ \texttt{exp\_name} gốc nên không còn hardcode
   \texttt{checkpoint\_100000}.
   \item Branch này cũng giữ song song bộ notebook TPU CelebA-HQ:
   \texttt{raes-jax-celebahq-kaggle-tpuv5e8-sitdh-b.ipynb}, và

@@ -495,18 +495,21 @@ runs `uv sync`, applies the `jaxlib` executable-stack fix, loads the Kaggle
 secret, runs a path sanity-check for the restored dataset/FID/workdir files,
 and finishes with `src_jax/train.py --workdir ...`. The notebook first locates
 the newest `CelebA256_SiTDH-B_DINOv2-B_jax_tpuv5e8-*` run directory under
-`/kaggle/working/results_jax_tpu/`, then both the shell pre-check and the
-runtime work from the newest `checkpoint_<step>` directory available under that
-workdir, so the notebook no longer hardcodes either the timestamped run folder
-or `checkpoint_100000`. If the target workdir was created before
-`wandb_run.json` existed, pass `--wandb-run-id <existing_run_id>` once so the
-resumed Kaggle session binds to the exact old W&B run instead of aborting.
+`/kaggle/working/results_jax_tpu/`, copies the newest `checkpoint_<step>`
+directory from that source workdir into a fresh timestamped resume workdir,
+creates a fresh `wandb_run.json` there with a new W&B run ID, and then lets the
+runtime restore from that copied checkpoint while keeping the original
+experiment name. The notebook therefore no longer hardcodes either the
+timestamped source workdir or `checkpoint_100000`.
 
 The same branch also keeps the parallel CelebA-HQ TPU workflow:
 [../raes-jax-celebahq-kaggle-tpuv5e8-sitdh-b.ipynb](../raes-jax-celebahq-kaggle-tpuv5e8-sitdh-b.ipynb),
 and
 [../raes-jax-celebahq-kaggle-tpuv5e8-sitdh-b-resume.ipynb](../raes-jax-celebahq-kaggle-tpuv5e8-sitdh-b-resume.ipynb).
 Those notebooks reuse the same JAX/Kaggle flow for the CelebA-HQ 256 dataset.
+The resume notebook follows the same fresh-workdir, fresh-W&B-run flow as the
+CelebA version while still keeping the original experiment name from the source
+checkpoint run.
 This merge also restores the dedicated export helpers
 [`src_jax/export_celebahq_hf.py`](../src_jax/export_celebahq_hf.py) and
 [`src_jax/export_celebahq_tfds.py`](../src_jax/export_celebahq_tfds.py), plus
