@@ -532,14 +532,13 @@ RMS/variance, and source metrics are available by default.
 If you already have an Orbax run directory for that VAE flow and want to
 continue training from its latest checkpoint, use
 [../vaes-jax-celeba-kaggle-tpuv5e8-sitb-moe1-resume.ipynb](../vaes-jax-celeba-kaggle-tpuv5e8-sitb-moe1-resume.ipynb).
-That notebook mirrors the resume-only Kaggle TPU pattern used by the DH
-notebook, but searches for the newest
-`CelebA256_SiT-B_StabilityVAE_moe1_jax_tpuv5e8-*` run directory instead. Its
-resume train cell also re-applies `training.log_rae_latent_stats=true` and
+That notebook now copies the newest `checkpoint_*` from the latest
+`CelebA256_SiT-B_StabilityVAE_moe1_jax_tpuv5e8-*` workdir into a fresh
+timestamped resume workdir, seeds a fresh `wandb_run.json` with a new W&B run
+ID, keeps the original experiment name for readability, and re-applies
+`training.log_rae_latent_stats=true` plus
 `training.log_activation_stats=true` from the CLI so resumed runs keep the same
-diagnostics enabled by default. If the target workdir was created before
-`wandb_run.json` existed, pass `--wandb-run-id <existing_run_id>` once so the
-resumed Kaggle session binds to the exact old W&B run instead of aborting.
+diagnostics enabled by default.
 
 The shipped CelebA `moe1` notebooks on this branch now pin the same Stage 2
 host-loader/diagnostic defaults across both Kaggle and TPU variants:
@@ -554,8 +553,9 @@ and
 [../vaes-jax-celebahq-kaggle-tpuv5e8-sitb-moe1-resume.ipynb](../vaes-jax-celebahq-kaggle-tpuv5e8-sitb-moe1-resume.ipynb).
 They keep the same `StabilityVAE + SiT-B + moe1` recipe but export
 `/kaggle/working/celebahq256_imgfolder`, build `celebahq256_source_gmm.npz`,
-and resume the timestamped `CelebAHQ256_SiT-B_StabilityVAE_moe1_jax_tpuv5e8-*`
-workdirs instead of the CelebA ones. They pin the same Stage 2
+copy the latest checkpoint from `CelebAHQ256_SiT-B_StabilityVAE_moe1_jax_tpuv5e8-*`
+into a fresh timestamped resume workdir, and then continue with a fresh W&B
+run ID while keeping the original experiment name. They pin the same Stage 2
 host-loader/diagnostic defaults as the CelebA `moe1` notebooks:
 `training.num_workers=16`, `training.prefetch_factor=4`,
 `eval.prefetch_factor=4`, `training.log_rae_latent_stats=true`, and
