@@ -39,6 +39,55 @@ def _bridge_legacy_wandb_env(entity: str | None, project: str | None) -> None:
         os.environ["PROJECT"] = project
 
 
+def _coerce_wandb_step(value: Any) -> int | None:
+    if value is None:
+        return None
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _normalize_wandb_log_call(payload: Any, *, step: Any = None) -> tuple[Any, int | None]:
+    resolved_step = _coerce_wandb_step(step)
+    if not isinstance(payload, dict):
+        return payload, resolved_step
+
+    data = dict(payload)
+    payload_step = _coerce_wandb_step(data.get("train_step"))
+    if payload_step is None:
+        payload_step = _coerce_wandb_step(data.get("step"))
+
+    canonical_step = resolved_step if resolved_step is not None else payload_step
+    if canonical_step is not None:
+        data["train_step"] = canonical_step
+
+    return data, canonical_step
+
+
+def _install_consistent_wandb_step_axis(wandb_utils: Any) -> None:
+    wandb_module = getattr(wandb_utils, "wandb", None)
+    if wandb_module is None or getattr(wandb_module, "_rae_step_axis_patched", False):
+        return
+
+    original_log = wandb_module.log
+
+    def patched_log(payload: Any, *args: Any, step: Any = None, **kwargs: Any) -> Any:
+        normalized_payload, normalized_step = _normalize_wandb_log_call(payload, step=step)
+        return original_log(normalized_payload, *args, step=normalized_step, **kwargs)
+
+    wandb_module.log = patched_log
+    wandb_module._rae_step_axis_patched = True
+
+
+def _define_wandb_train_step_metric(wandb_utils: Any) -> None:
+    define_metric = getattr(getattr(wandb_utils, "wandb", None), "define_metric", None)
+    if not callable(define_metric):
+        return
+    define_metric("train_step")
+    define_metric("*", step_metric="train_step")
+
+
 def _wandb_resume_metadata_path(workdir: Path) -> Path:
     return workdir / WANDB_RESUME_METADATA_FILENAME
 
@@ -252,6 +301,9 @@ def _install_strict_wandb_initializer(
                 **fallback_kwargs,
             )
 
+        _install_consistent_wandb_step_axis(wandb_utils)
+        _define_wandb_train_step_metric(wandb_utils)
+
         payload = dict(metadata)
         payload["run_id"] = str(getattr(run, "id", metadata["run_id"])) if run is not None else metadata["run_id"]
         write_json(_wandb_resume_metadata_path(workdir), payload)
@@ -312,7 +364,7 @@ def _log_named_fid_scores(
     payload: dict[str, float | int] = {"train_step": int(step)}
     for num_samples, fid_value in fid_scores.items():
         payload[f"FID-{num_samples // 1000}K/{tag} (cfg={guidance_scale})"] = float(fid_value)
-    wandb_utils.log(payload)
+    wandb_utils.log(payload, step=int(step))
 
 
 def _calculate_backend_fid(
@@ -1164,9 +1216,9 @@ def _patch_backend_train_loop_for_eval(trainer: Any) -> Any:
                 summary = {f"train_{key}": float(value[-1]) for key, value in metrics_history.items()}
                 summary["steps_per_second"] = config.log_every_steps / (time.time() - train_metrics_last_t)
                 summary["learning_rate"] = learning_rate_fn(step)
-                summary["step"] = step + 1
+                summary["train_step"] = step + 1
 
-                trainer.wandb_utils.log_copy(summary)
+                trainer.wandb_utils.log_copy(summary, step=step + 1)
                 writer.write_scalars(step + 1, summary)
                 metrics_history = defaultdict(list)
                 train_metrics_last_t = time.time()
@@ -1198,8 +1250,8 @@ def _patch_backend_train_loop_for_eval(trainer: Any) -> Any:
                             max_batches=int(config.eval.get("max_batches", 0)),
                         )
                     )
-                eval_summary["step"] = step + 1
-                trainer.wandb_utils.log_copy(eval_summary)
+                eval_summary["train_step"] = step + 1
+                trainer.wandb_utils.log_copy(eval_summary, step=step + 1)
                 writer.write_scalars(step + 1, eval_summary)
 
             if config.visualize.get("on") and (step + 1) % config.visualize_every_steps == 0:
@@ -1228,7 +1280,7 @@ def _patch_backend_train_loop_for_eval(trainer: Any) -> Any:
                             encoder,
                             guidance_scale,
                             sample_sizes,
-                            step,
+                            step + 1,
                             mesh,
                         )
                         if config.eval.get("fid_eval_model", False):
@@ -1247,7 +1299,7 @@ def _patch_backend_train_loop_for_eval(trainer: Any) -> Any:
                                 encoder,
                                 guidance_scale,
                                 sample_sizes,
-                                step,
+                                step + 1,
                                 mesh,
                                 tag="model",
                             )
