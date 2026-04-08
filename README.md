@@ -238,6 +238,9 @@ run before continuing. When you pass `--workdir` without `--exp-name`, the JAX
 adapter now infers the resume experiment name from `wandb_run.json` when
 present, otherwise from the workdir basename, so resume launches do not need a
 second manual `--exp-name` override just to satisfy the strict W&B binding.
+If the account or workspace does not have W&B rewind enabled yet, the adapter
+now catches that private-preview error and falls back to plain
+`id=<run_id>, resume="must"` so resume launches continue instead of crashing.
 When a resumed training run restores an Orbax checkpoint, the runtime now
 deletes the on-disk `checkpoint_*` directory immediately after the state is
 loaded. Later saves also clear any older `checkpoint_*` directories before
