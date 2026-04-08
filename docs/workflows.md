@@ -222,6 +222,10 @@ Resume / initialize behavior:
 - If you launch with `--workdir` but omit `--exp-name`, the adapter now
   recovers the stored resume name from `wandb_run.json` when it exists,
   otherwise it falls back to the workdir basename.
+- If W&B rejects `resume_from` because rewind is still a private-preview
+  feature on that account/workspace, the adapter now retries automatically
+  with the persisted run ID plus `resume="must"` so resume training can
+  continue.
 
 ## 5. Enable wandb Logging
 
