@@ -209,7 +209,10 @@ session cũ sẽ không bị giữ lại sai lịch sử. Với train resume, ru
 ngay thư mục \texttt{checkpoint\_*} vừa restore khỏi ổ đĩa sau khi state đã vào
 bộ nhớ; trước mỗi lần save checkpoint mới nó cũng xóa các
 \texttt{checkpoint\_*} cũ còn lại để workdir không cần chỗ cho hai Orbax
-checkpoint cùng lúc. Nếu resume một Orbax workdir cũ chưa có
+checkpoint cùng lúc. Đường cleanup này giờ cũng chuẩn hóa cả \texttt{Path}
+lẫn workdir dạng chuỗi mà backend trainer truyền vào, nên resume DH/VAE không
+còn crash chỉ vì prune checkpoint với \texttt{str(workdir)}. Nếu resume một
+Orbax workdir cũ chưa có
 \texttt{wandb\_run.json}, cần truyền \texttt{--wandb-run-id <existing\_run\_id>}
 một lần để bind đúng historical run trước khi train tiếp. Khi đã có
 \texttt{wandb\_run.json}, launch resume không cần lặp lại thủ công

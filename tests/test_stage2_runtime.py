@@ -196,6 +196,16 @@ class Stage2RuntimeWandbTests(unittest.TestCase):
             self.assertFalse(removed_path.exists())
             self.assertTrue(keep_path.exists())
 
+    def test_delete_orbax_checkpoints_accepts_string_workdir(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            workdir = Path(tmp_dir)
+            ckpt_path = workdir / "checkpoint_000010"
+            ckpt_path.mkdir()
+
+            removed = _delete_orbax_checkpoints(str(workdir))
+
+            self.assertEqual(removed, [ckpt_path])
+            self.assertFalse(ckpt_path.exists())
     def test_resolve_stage2_exp_name_prefers_explicit_cli_value(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir:
             args = SimpleNamespace(exp_name="cli-exp", workdir=tmp_dir)

@@ -214,6 +214,9 @@ Resume / initialize behavior:
   immediately. Before writing a later checkpoint, the runtime also clears any
   older `checkpoint_*` directories first, so the workdir never needs free space
   for two Orbax checkpoints at the same time.
+- That cleanup path now normalizes both `Path` and string-style workdir values
+  from the backend trainer, so DH/VAE resumes do not crash while pruning
+  restored checkpoints.
 - If a legacy Orbax workdir already has checkpoints but predates
   `wandb_run.json`, pass `--wandb-run-id <existing_run_id>` once so the
   adapter can persist the exact historical run binding before training
