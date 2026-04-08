@@ -248,7 +248,10 @@ On the JAX path, `wandb_run.json` inside the workdir is now the source of truth
 for exact resume behavior. A later launch must match that stored binding, and
 the adapter rewinds the W&B run to the latest checkpoint step before logging
 continues. Resume launches therefore no longer need a duplicate manual
-`--exp-name` override when they already point at the historical workdir.
+`--exp-name` override when they already point at the historical workdir. The
+adapter also now normalizes every JAX W&B payload onto `train_step`, then
+mirrors that same value into W&B's internal `Step`, so line plots stay aligned
+whether you choose `Step` or `train_step` as the X axis.
 
 Current Stage 2 namespaces:
 

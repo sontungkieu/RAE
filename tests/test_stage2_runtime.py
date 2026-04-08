@@ -12,8 +12,10 @@ try:
     from src_jax.stage2_runtime import (
         _delete_orbax_checkpoints,
         _install_strict_wandb_initializer,
+        _install_consistent_wandb_step_axis,
         _iter_orbax_checkpoint_dirs,
         _load_wandb_resume_metadata,
+        _normalize_wandb_log_call,
         _prune_stale_orbax_checkpoints,
         _resolve_stage2_exp_name,
         _resolve_wandb_resume_binding,
@@ -24,8 +26,10 @@ try:
 except Exception as exc:  # pragma: no cover - environment-dependent
     _delete_orbax_checkpoints = None
     _install_strict_wandb_initializer = None
+    _install_consistent_wandb_step_axis = None
     _iter_orbax_checkpoint_dirs = None
     _load_wandb_resume_metadata = None
+    _normalize_wandb_log_call = None
     _prune_stale_orbax_checkpoints = None
     _resolve_stage2_exp_name = None
     _resolve_wandb_resume_binding = None
@@ -63,6 +67,8 @@ class _FakeWandb:
         self._fail_on_rewind = fail_on_rewind
         self.login_keys: list[str] = []
         self.calls: list[dict[str, object]] = []
+        self.define_metric_calls: list[tuple[tuple[object, ...], dict[str, object]]] = []
+        self.logged: list[tuple[dict[str, object], object | None]] = []
         self.util = SimpleNamespace(generate_id=self._generate_id)
 
     def _generate_id(self) -> str:
@@ -83,6 +89,12 @@ class _FakeWandb:
         if run_id is None and "resume_from" in kwargs:
             run_id = str(kwargs["resume_from"]).split("?", 1)[0]
         return SimpleNamespace(id=run_id)
+
+    def define_metric(self, *args: object, **kwargs: object) -> None:
+        self.define_metric_calls.append((args, dict(kwargs)))
+
+    def log(self, payload: dict[str, object], step: object = None) -> None:
+        self.logged.append((dict(payload), step))
 
 
 class _FakeWandbUtils:
@@ -154,6 +166,27 @@ class Stage2RuntimeTests(unittest.TestCase):
 
 @unittest.skipIf(_IMPORT_ERROR is not None, f"Missing optional dependency: {_IMPORT_ERROR}")
 class Stage2RuntimeWandbTests(unittest.TestCase):
+    def test_normalize_wandb_log_call_uses_train_step_as_canonical_axis(self) -> None:
+        payload, step = _normalize_wandb_log_call({"learning_rate": 1e-4, "train_step": 120})
+        self.assertEqual(payload["train_step"], 120)
+        self.assertEqual(step, 120)
+
+    def test_normalize_wandb_log_call_promotes_legacy_step_field(self) -> None:
+        payload, step = _normalize_wandb_log_call({"learning_rate": 1e-4, "step": 33})
+        self.assertEqual(payload["train_step"], 33)
+        self.assertEqual(step, 33)
+
+    def test_install_consistent_wandb_step_axis_patches_wandb_log(self) -> None:
+        fake_wandb = _FakeWandb(["unused123"])
+        fake_utils = _FakeWandbUtils(fake_wandb)
+
+        _install_consistent_wandb_step_axis(fake_utils)
+        fake_wandb.log({"learning_rate": 1e-4, "train_step": 77})
+        fake_wandb.log({"FID-4K (cfg=1.0)": 9.25}, step=88)
+
+        self.assertEqual(fake_wandb.logged[0], ({"learning_rate": 1e-4, "train_step": 77}, 77))
+        self.assertEqual(fake_wandb.logged[1], ({"FID-4K (cfg=1.0)": 9.25, "train_step": 88}, 88))
+
     def test_iter_orbax_checkpoint_dirs_sorts_and_filters_dirs(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir:
             workdir = Path(tmp_dir)
@@ -360,6 +393,15 @@ class Stage2RuntimeWandbTests(unittest.TestCase):
             self.assertEqual(fake_wandb.calls[0]["id"], "fresh123")
             self.assertEqual(fake_wandb.calls[0]["resume"], "never")
             self.assertEqual(fake_wandb.calls[1]["resume_from"], "fresh123?_step=120")
+            self.assertEqual(
+                fake_wandb.define_metric_calls,
+                [
+                    (("train_step",), {}),
+                    (("*",), {"step_metric": "train_step"}),
+                    (("train_step",), {}),
+                    (("*",), {"step_metric": "train_step"}),
+                ],
+            )
 
     def test_initializer_falls_back_when_rewind_private_preview_is_unavailable(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir:

@@ -326,7 +326,9 @@ Orbax directory with checkpoints but no `wandb_run.json`, pass
 of creating a fresh W&B run by accident. If you omit `--exp-name` while
 pointing at an existing workdir, the adapter now recovers the stored resume
 name from `wandb_run.json` when present, otherwise it falls back to the
-basename of the workdir.
+basename of the workdir. The JAX runtime also now treats `train_step` as the
+canonical W&B axis for train, eval, FID, and media logs, while mirroring the
+same value into W&B's internal `Step` so either axis selection stays aligned.
 
 ```bash
 python3 src_jax/sample.py \

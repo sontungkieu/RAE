@@ -216,7 +216,10 @@ vào, nên resume DH/VAE không còn crash chỉ vì prune checkpoint với
 source này không còn resume ngay trong workdir cũ nữa: chúng copy
 \texttt{checkpoint\_*} mới nhất sang một workdir mới có timestamp, seed một
 \texttt{wandb\_run.json} mới với run id mới, rồi giữ nguyên \texttt{exp\_name}
-gốc để lineage dễ đọc trong khi history W\&B của lần resume vẫn sạch.
+gốc để lineage dễ đọc trong khi history W\&B của lần resume vẫn sạch. Adapter
+giờ cũng coi \texttt{train\_step} là trục W\&B chuẩn cho train, eval, FID, và
+media log, rồi mirror chính giá trị này sang internal \texttt{Step} của W\&B
+để line plot không còn bị lệch khi đổi X axis.
 
 \subsection{FID trong train loop}
 
