@@ -71,7 +71,12 @@ def _resolve_stage2_exp_name(args: argparse.Namespace) -> str | None:
     return workdir.name
 
 
-def _latest_orbax_checkpoint_step(workdir: Path) -> int | None:
+def _as_path(pathlike: str | Path) -> Path:
+    return pathlike if isinstance(pathlike, Path) else Path(pathlike)
+
+
+def _latest_orbax_checkpoint_step(workdir: str | Path) -> int | None:
+    workdir = _as_path(workdir)
     latest_step: int | None = None
     for path in workdir.glob("checkpoint_*"):
         if not path.is_dir():
@@ -83,7 +88,8 @@ def _latest_orbax_checkpoint_step(workdir: Path) -> int | None:
         latest_step = step if latest_step is None else max(latest_step, step)
     return latest_step
 
-def _iter_orbax_checkpoint_dirs(workdir: Path) -> list[tuple[int, Path]]:
+def _iter_orbax_checkpoint_dirs(workdir: str | Path) -> list[tuple[int, Path]]:
+    workdir = _as_path(workdir)
     checkpoints: list[tuple[int, Path]] = []
     for path in workdir.glob("checkpoint_*"):
         if not path.is_dir():
@@ -96,7 +102,8 @@ def _iter_orbax_checkpoint_dirs(workdir: Path) -> list[tuple[int, Path]]:
     checkpoints.sort(key=lambda item: item[0])
     return checkpoints
 
-def _delete_orbax_checkpoints(workdir: Path, *, keep_step: int | None = None) -> list[Path]:
+def _delete_orbax_checkpoints(workdir: str | Path, *, keep_step: int | None = None) -> list[Path]:
+    workdir = _as_path(workdir)
     removed: list[Path] = []
     for step, path in _iter_orbax_checkpoint_dirs(workdir):
         if keep_step is not None and step == keep_step:

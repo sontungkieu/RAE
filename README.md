@@ -252,6 +252,9 @@ deletes the on-disk `checkpoint_*` directory immediately after the state is
 loaded. Later saves also clear any older `checkpoint_*` directories before
 writing the next checkpoint, so these JAX workdirs never need space for two
 Orbax checkpoints at once.
+This cleanup now normalizes both `Path` and string-style workdir values from
+the backend trainer, so resume runs on the DH and VAE branches do not crash
+while pruning restored checkpoints.
 
 Stage 2 training now logs the following namespaces:
 
