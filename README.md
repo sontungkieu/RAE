@@ -332,7 +332,12 @@ exist, later launches now auto-rewind the bound W&B run to the latest
 checkpoint step before logging continues. If you point `--workdir` at a legacy
 Orbax directory with checkpoints but no `wandb_run.json`, pass
 `--wandb-run-id <existing_run_id>` once; otherwise the adapter aborts instead
-of creating a fresh W&B run by accident.
+of creating a fresh W&B run by accident. If you omit `--exp-name` while
+pointing at an existing workdir, the adapter now recovers the stored resume
+name from `wandb_run.json` when present, otherwise it falls back to the
+basename of the workdir. The JAX runtime also now treats `train_step` as the
+canonical W&B axis for train, eval, FID, and media logs, while mirroring the
+same value into W&B's internal `Step` so either axis selection stays aligned.
 
 ```bash
 python3 src_jax/sample.py \
