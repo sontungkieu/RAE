@@ -134,10 +134,12 @@ python3 src_jax/train.py \
   \item Nếu đã có run Orbax của flow \texttt{StabilityVAE + SiT-B} và cần
   resume, dùng notebook
   \texttt{vaes-jax-celeba-kaggle-tpuv5e8-sitb-resume.ipynb}. Notebook này
-  dùng cùng pattern resume-only của bản DH, nhưng tự tìm thư mục
-  \texttt{CelebA256\_SiT-B\_StabilityVAE\_jax\_tpuv5e8-*} mới nhất và ép lại
-  cả cấu hình \texttt{num\_workers=16}, \texttt{prefetch\_factor=4}, và hai
-  cờ log diagnostics khi resume.
+  sẽ copy \texttt{checkpoint\_*} mới nhất từ
+  \texttt{CelebA256\_SiT-B\_StabilityVAE\_jax\_tpuv5e8-*} sang workdir resume
+  mới có timestamp, tạo \texttt{wandb\_run.json} với run ID W\&B mới nhưng vẫn
+  giữ \texttt{exp\_name} gốc, rồi mới ép lại cả cấu hình
+  \texttt{num\_workers=16}, \texttt{prefetch\_factor=4}, và hai cờ log
+  diagnostics khi resume.
   \item Nếu cần huấn luyện Stage 1 kiểu GAN đầy đủ, hiện vẫn phải xem đây là
   phần chưa được JAX hóa trong branch này.
 \end{itemize}

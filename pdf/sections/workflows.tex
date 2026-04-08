@@ -360,26 +360,27 @@ train lẫn eval ở \texttt{num\_workers=16} với
 RMS/variance, và activation RMS/variance bật sẵn.
 
 Nếu đã có run Orbax của flow VAE và cần train tiếp, dùng notebook
-\texttt{vaes-jax-celeba-kaggle-tpuv5e8-sitb-resume.ipynb}. Notebook này bám
-theo pattern resume-only của branch, nhưng tìm workdir mới nhất theo pattern
-\texttt{CelebA256\_SiT-B\_StabilityVAE\_jax\_tpuv5e8-*} và truyền lại
+\texttt{vaes-jax-celeba-kaggle-tpuv5e8-sitb-resume.ipynb}. Notebook này giờ sẽ
+copy \texttt{checkpoint\_*} mới nhất từ workdir
+\texttt{CelebA256\_SiT-B\_StabilityVAE\_jax\_tpuv5e8-*} sang một workdir resume
+mới có timestamp, ghi sẵn \texttt{wandb\_run.json} với run ID W\&B mới, giữ
+nguyên \texttt{exp\_name} gốc để dễ truy vết, rồi mới resume với
 \texttt{training.num\_workers=16},
 \texttt{training.prefetch\_factor=4},
 \texttt{eval.num\_workers=16},
 \texttt{eval.prefetch\_factor=4},
 \texttt{training.log\_rae\_latent\_stats=true}, và
-\texttt{training.log\_activation\_stats=true} khi resume. Nếu workdir đích là
-legacy run được tạo trước khi cơ chế \texttt{wandb\_run.json} tồn tại, cần thêm
-\texttt{--wandb-run-id <existing\_run\_id>} một lần để notebook resume đúng
-chính run W\&B cũ đó.
+\texttt{training.log\_activation\_stats=true}.
 
 Branch này cũng giữ song song bộ notebook TPU CelebA-HQ:
 \texttt{vaes-jax-celebahq-kaggle-tpuv5e8-sitb.ipynb}, và
 \texttt{vaes-jax-celebahq-kaggle-tpuv5e8-sitb-resume.ipynb}. Chúng dùng cùng
 pipeline \texttt{StabilityVAE + SiT-B}, nhưng export dữ liệu sang
-\texttt{/kaggle/working/celebahq256\_imgfolder} và resume theo pattern
-\texttt{CelebAHQ256\_SiT-B\_StabilityVAE\_jax\_tpuv5e8-*} thay vì flow CelebA
-thường. Chúng cũng pin cùng bộ mặc định loader/chẩn đoán Stage 2 như notebook
+\texttt{/kaggle/working/celebahq256\_imgfolder} và copy checkpoint mới nhất
+từ pattern \texttt{CelebAHQ256\_SiT-B\_StabilityVAE\_jax\_tpuv5e8-*} sang
+workdir resume mới trước khi chạy tiếp với run ID W\&B mới nhưng vẫn giữ
+nguyên tên thí nghiệm gốc. Chúng cũng pin cùng bộ mặc định loader/chẩn đoán
+Stage 2 như notebook
 CelebA: \texttt{training.num\_workers=16},
 \texttt{training.prefetch\_factor=4},
 \texttt{eval.prefetch\_factor=4},

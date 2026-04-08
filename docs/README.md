@@ -10,9 +10,9 @@ and the lightweight JAX/NNX adapter shipped in `src_jax/`.
 - [Config Reference](./config-reference.md): YAML schema and which scripts consume each block.
 - [PDF Manual](../pdf/main.pdf): detailed Vietnamese PDF for architecture, workflows, config, and operations.
 - [Kaggle TPU Notebook (StabilityVAE + SiT-B)](../vaes-jax-celeba-kaggle-tpuv5e8-sitb.ipynb): `TPU v5e-8` notebook that uses `stage1.StabilityVAE`, single-tower `stage2.models.SiT.SiT`, default `num_workers=16`, `prefetch_factor=(4,4)`, `training.random_flip=true`, and default latent/activation diagnostics on the CelebA `SiT-B` recipe.
-- [Kaggle TPU Notebook (StabilityVAE + SiT-B Resume)](../vaes-jax-celeba-kaggle-tpuv5e8-sitb-resume.ipynb): resume-only `TPU v5e-8` notebook for the newest `CelebA256_SiT-B_StabilityVAE_jax_tpuv5e8-*` workdir, reapplying the same `num_workers=16`, `prefetch_factor=(4,4)`, and diagnostics defaults, with strict W&B reuse plus automatic rewind to the latest checkpoint once the workdir has `wandb_run.json` or a one-time `--wandb-run-id` bind for legacy runs.
+- [Kaggle TPU Notebook (StabilityVAE + SiT-B Resume)](../vaes-jax-celeba-kaggle-tpuv5e8-sitb-resume.ipynb): resume-only `TPU v5e-8` notebook for the newest `CelebA256_SiT-B_StabilityVAE_jax_tpuv5e8-*` workdir; it copies the latest checkpoint into a fresh timestamped resume workdir, keeps the original experiment name, and seeds a fresh W&B run ID before resuming.
 - [Kaggle TPU Notebook (StabilityVAE + SiT-B, CelebA-HQ)](../vaes-jax-celebahq-kaggle-tpuv5e8-sitb.ipynb): `TPU v5e-8` notebook for the CelebA-HQ 256 variant of the single-tower `SiT-B` VAE flow.
-- [Kaggle TPU Notebook (StabilityVAE + SiT-B Resume, CelebA-HQ)](../vaes-jax-celebahq-kaggle-tpuv5e8-sitb-resume.ipynb): resume-only `TPU v5e-8` notebook for the newest `CelebAHQ256_SiT-B_StabilityVAE_jax_tpuv5e8-*` workdir with the same W&B rewind rules.
+- [Kaggle TPU Notebook (StabilityVAE + SiT-B Resume, CelebA-HQ)](../vaes-jax-celebahq-kaggle-tpuv5e8-sitb-resume.ipynb): resume-only `TPU v5e-8` notebook for the newest `CelebAHQ256_SiT-B_StabilityVAE_jax_tpuv5e8-*` workdir with the same fresh-workdir, fresh-W&B-run resume flow.
 
 ## Recommended Reading Order
 

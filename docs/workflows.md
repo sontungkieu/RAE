@@ -524,26 +524,25 @@ enabled by default.
 If you already have an Orbax run directory for that VAE flow and want to
 continue training from its latest checkpoint, use
 [../vaes-jax-celeba-kaggle-tpuv5e8-sitb-resume.ipynb](../vaes-jax-celeba-kaggle-tpuv5e8-sitb-resume.ipynb).
-That notebook mirrors the resume-only Kaggle TPU pattern used by the DH
-notebook, but searches for the newest
-`CelebA256_SiT-B_StabilityVAE_jax_tpuv5e8-*` run directory instead and
-re-applies `training.num_workers=16`, `training.prefetch_factor=4`,
+That notebook now copies the newest `checkpoint_*` from the latest
+`CelebA256_SiT-B_StabilityVAE_jax_tpuv5e8-*` workdir into a fresh timestamped
+resume workdir, seeds a fresh `wandb_run.json` with a new W&B run ID, keeps the
+original experiment name for readability, and re-applies
+`training.num_workers=16`, `training.prefetch_factor=4`,
 `eval.num_workers=16`, `eval.prefetch_factor=4`,
 `training.log_rae_latent_stats=true`, and
-`training.log_activation_stats=true` from the CLI during resume. If the target
-workdir was created before `wandb_run.json` existed, pass
-`--wandb-run-id <existing_run_id>` once so the resumed Kaggle session binds to
-the exact old W&B run instead of aborting.
+`training.log_activation_stats=true` from the CLI during resume.
 
 The same branch also keeps parallel CelebA-HQ TPU notebooks:
 [../vaes-jax-celebahq-kaggle-tpuv5e8-sitb.ipynb](../vaes-jax-celebahq-kaggle-tpuv5e8-sitb.ipynb),
 and
 [../vaes-jax-celebahq-kaggle-tpuv5e8-sitb-resume.ipynb](../vaes-jax-celebahq-kaggle-tpuv5e8-sitb-resume.ipynb).
 Those notebooks keep the same `StabilityVAE + SiT-B` pipeline, but export the
-CelebA-HQ 256 dataset to `/kaggle/working/celebahq256_imgfolder` and resume the
-timestamped `CelebAHQ256_SiT-B_StabilityVAE_jax_tpuv5e8-*` workdirs instead of
-the CelebA ones. They now pin the same Stage 2 host-loader/diagnostic defaults
-as the CelebA notebooks: `training.num_workers=16`,
+CelebA-HQ 256 dataset to `/kaggle/working/celebahq256_imgfolder` and copy the
+latest checkpoint from `CelebAHQ256_SiT-B_StabilityVAE_jax_tpuv5e8-*` into a
+fresh timestamped resume workdir before continuing with a fresh W&B run ID and
+that original experiment name. They now pin the same Stage 2
+host-loader/diagnostic defaults as the CelebA notebooks: `training.num_workers=16`,
 `training.prefetch_factor=4`, `eval.prefetch_factor=4`,
 `training.log_rae_latent_stats=true`, and
 `training.log_activation_stats=true`.
