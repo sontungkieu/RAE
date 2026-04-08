@@ -116,6 +116,21 @@ def _generate_fresh_wandb_run_id(wandb_utils: Any) -> str:
     return os.urandom(4).hex()
 
 
+def _looks_like_wandb_rewind_preview_error(exc: Exception) -> bool:
+    message = str(exc).lower()
+    return "failed to rewind run" in message and "private preview" in message
+
+
+def _fallback_wandb_resume_kwargs(init_kwargs: dict[str, str]) -> dict[str, str] | None:
+    resume_from = init_kwargs.get("resume_from")
+    if not resume_from:
+        return None
+    run_id = str(resume_from).split("?", 1)[0]
+    if not run_id:
+        return None
+    return {"id": run_id, "resume": "must"}
+
+
 def _resolve_wandb_resume_binding(
     *,
     workdir: Path,
@@ -207,13 +222,30 @@ def _install_strict_wandb_initializer(
 
         config_dict = config.to_dict() if hasattr(config, "to_dict") else config
         wandb_utils.wandb.login(key=api_key)
-        run = wandb_utils.wandb.init(
-            entity=entity,
-            project=project_name,
-            name=exp_name,
-            config=config_dict,
-            **init_kwargs,
-        )
+        try:
+            run = wandb_utils.wandb.init(
+                entity=entity,
+                project=project_name,
+                name=exp_name,
+                config=config_dict,
+                **init_kwargs,
+            )
+        except Exception as exc:
+            fallback_kwargs = _fallback_wandb_resume_kwargs(init_kwargs)
+            if fallback_kwargs is None or not _looks_like_wandb_rewind_preview_error(exc):
+                raise
+            print(
+                "W&B rewind is unavailable for this account/workspace; "
+                f"falling back to resume=\"must\" for run {fallback_kwargs['id']}.",
+                flush=True,
+            )
+            run = wandb_utils.wandb.init(
+                entity=entity,
+                project=project_name,
+                name=exp_name,
+                config=config_dict,
+                **fallback_kwargs,
+            )
 
         payload = dict(metadata)
         payload["run_id"] = str(getattr(run, "id", metadata["run_id"])) if run is not None else metadata["run_id"]

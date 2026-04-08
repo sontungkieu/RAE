@@ -214,7 +214,10 @@ checkpoint cùng lúc. Nếu resume một Orbax workdir cũ chưa có
 một lần để bind đúng historical run trước khi train tiếp. Khi đã có
 \texttt{wandb\_run.json}, launch resume không cần lặp lại thủ công
 \texttt{--exp-name}; adapter sẽ tự suy ra tên run từ metadata đó, hoặc từ tên
-thư mục workdir nếu metadata chưa có.
+thư mục workdir nếu metadata chưa có. Nếu account/workspace chưa được bật
+W\&B rewind private preview nên \texttt{resume\_from} bị từ chối, adapter sẽ tự
+fallback sang \texttt{id=<run\_id>, resume="must"} để launch resume không bị
+crash chỉ vì thiếu quyền rewind.
 
 \subsection{FID trong train loop}
 
