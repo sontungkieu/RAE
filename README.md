@@ -38,6 +38,11 @@ Use the docs folder as the detailed guide for this branch:
 - [raes-jax-celebahq-kaggle-tpuv5e8-sitdh-b-moe1.ipynb](raes-jax-celebahq-kaggle-tpuv5e8-sitdh-b-moe1.ipynb): CelebA-HQ TPU `v5e-8` notebook for the `SiTDH-B + moe1` recipe
 - [raes-jax-celebahq-kaggle-tpuv5e8-sitdh-b-moe1-resume.ipynb](raes-jax-celebahq-kaggle-tpuv5e8-sitdh-b-moe1-resume.ipynb): resume-only CelebA-HQ TPU notebook for the `SiTDH-B + moe1` runs, cloning the newest checkpoint into a fresh timestamped resume workdir with a fresh `wandb_run.json` while keeping the original experiment name
 
+The shipped Kaggle notebooks on this branch now only bootstrap the `WANDB2`
+secret for W&B authentication. They no longer read `HF_TOK_WRITE_KAGGLE`
+during notebook startup; `HF_TOKEN` is only needed when you explicitly invoke
+the Hugging Face upload path such as `--hf-repo-id` or `src_jax/push_hf.py`.
+
 ## Environment
 
 ### Dependency Setup
