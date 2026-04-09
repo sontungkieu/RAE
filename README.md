@@ -38,6 +38,11 @@ Use the docs folder as the detailed guide for this branch:
 - [raes-jax-celebahq-kaggle-tpuv5e8-sitdh-b.ipynb](raes-jax-celebahq-kaggle-tpuv5e8-sitdh-b.ipynb): `TPU v5e-8` notebook for the `SiTDH-B` CelebA-HQ variant
 - [raes-jax-celebahq-kaggle-tpuv5e8-sitdh-b-resume.ipynb](raes-jax-celebahq-kaggle-tpuv5e8-sitdh-b-resume.ipynb): resume-only `TPU v5e-8` notebook for `CelebAHQ256_SiTDH-B_DINOv2-B_jax_tpuv5e8-*` runs, using the same fresh-workdir and fresh-W&B-run resume flow as the CelebA notebook
 
+The shipped Kaggle notebooks on this branch now only bootstrap the `WANDB2`
+secret for W&B authentication. They no longer read `HF_TOK_WRITE_KAGGLE`
+during notebook startup; `HF_TOKEN` is only needed when you explicitly invoke
+the Hugging Face upload path such as `--hf-repo-id` or `src_jax/push_hf.py`.
+
 ## Environment
 
 ### Dependency Setup
