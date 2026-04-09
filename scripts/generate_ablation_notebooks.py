@@ -54,6 +54,15 @@ def _split_cell_source(text: str) -> list[str]:
     return text.splitlines(keepends=True)
 
 
+def _apply_ablation_secret_policy(nb: dict[str, Any]) -> None:
+    for cell in nb.get("cells", []):
+        source = "".join(cell.get("source", []))
+        updated = source.replace('get_secret("WANDB2")', 'get_secret("WANDB_Tung")')
+        updated = updated.replace("get_secret('WANDB2')", "get_secret('WANDB_Tung')")
+        if updated != source:
+            cell["source"] = _split_cell_source(updated)
+
+
 def _deep_merge(base: dict[str, Any], override: dict[str, Any]) -> dict[str, Any]:
     merged = deepcopy(base)
     for key, value in override.items():
@@ -500,6 +509,7 @@ def generate_notebooks(args: argparse.Namespace) -> list[Path]:
         notebook["cells"][config_idx]["source"] = _split_cell_source(_render_config_cell(context))
         notebook["cells"][gmm_idx]["source"] = _split_cell_source(_render_gmm_cell(context))
         notebook["cells"][train_idx]["source"] = _split_cell_source(_render_train_cell(context))
+        _apply_ablation_secret_policy(notebook)
 
         output_path = output_dir / context["notebook_name"]
         if output_path.exists() and not args.overwrite:

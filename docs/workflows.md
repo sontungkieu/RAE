@@ -33,7 +33,12 @@ The first JAX run automatically bootstraps `diffuse_nnx` into
 The Kaggle JAX notebooks do not replay those package lists manually anymore:
 they set `UV_PROJECT_ENVIRONMENT=/tmp/.venv`, `UV_CACHE_DIR=/tmp/uv-cache`, and
 run `uv sync -q` against the repo `pyproject.toml` before the package-backed
-cells.
+cells. On this branch, the standard notebooks now only bootstrap the `WANDB2`
+Kaggle secret for W&B auth; they no longer read `HF_TOK_WRITE_KAGGLE` during
+notebook startup. `HF_TOKEN` is only needed if you explicitly use the Hugging
+Face upload path such as `--hf-repo-id` or `src_jax/push_hf.py`. The generated
+ablation notebooks under `generated_notebooks/vae_moe1/` switch that W&B secret
+name to `WANDB_Tung`.
 This repo patches the pinned `diffuse_nnx` checkout to import the Dinov2 models
 from `transformers` subpackages, so use `transformers==4.57.1` on this path.
 The same patch also lazy-loads `google-cloud-storage` for the remaining

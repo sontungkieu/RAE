@@ -58,6 +58,9 @@ class GenerateAblationNotebooksTests(unittest.TestCase):
             self.assertIn('--wandb-tags "${wandb_tags}"', train_cell)
             self.assertIn("hidden_channels: 96", config_cell)
             self.assertIn("router_temperature: 4.0", config_cell)
+            self.assertIn('get_secret("WANDB_Tung")', "".join(cell_sources))
+            self.assertNotIn("HF_TOK_WRITE_KAGGLE", "".join(cell_sources))
+            self.assertNotIn('os.environ["HF_TOKEN"]', "".join(cell_sources))
 
 
 if __name__ == "__main__":

@@ -41,6 +41,14 @@ Use the docs folder as the detailed guide for this branch:
 - [vaes-jax-celebahq-kaggle-tpuv5e8-sitb-moe1.ipynb](vaes-jax-celebahq-kaggle-tpuv5e8-sitb-moe1.ipynb): `TPU v5e-8` notebook for the CelebA-HQ 256 `StabilityVAE + SiT-B + moe1` flow
 - [vaes-jax-celebahq-kaggle-tpuv5e8-sitb-moe1-resume.ipynb](vaes-jax-celebahq-kaggle-tpuv5e8-sitb-moe1-resume.ipynb): resume-only `TPU v5e-8` notebook for the timestamped `CelebAHQ256_SiT-B_StabilityVAE_moe1_jax_tpuv5e8-*` Orbax runs, using the same fresh-workdir and fresh-W&B-run resume flow as the CelebA notebook
 
+The standard Kaggle notebooks on this branch now only bootstrap the `WANDB2`
+secret for W&B authentication. They no longer read `HF_TOK_WRITE_KAGGLE`
+during notebook startup; `HF_TOKEN` is only needed when you explicitly invoke
+the Hugging Face upload path such as `--hf-repo-id` or `src_jax/push_hf.py`.
+The generated ablation notebooks under `generated_notebooks/vae_moe1/` use the
+separate `WANDB_Tung` secret so high-volume sweeps do not reuse the default
+notebook credential name.
+
 ## Environment
 
 ### Dependency Setup

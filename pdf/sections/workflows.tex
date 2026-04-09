@@ -27,7 +27,14 @@ Lần chạy JAX đầu tiên sẽ tự bootstrap backend \texttt{diffuse\_nnx} 
 Các notebook JAX trên Kaggle không còn lặp lại từng lệnh \texttt{uv pip install}
 này; chúng đặt \texttt{UV\_PROJECT\_ENVIRONMENT=/tmp/.venv},
 \texttt{UV\_CACHE\_DIR=/tmp/uv-cache}, rồi chạy \texttt{uv sync -q} theo
-\texttt{pyproject.toml} của repo trước các cell phụ thuộc package.
+\texttt{pyproject.toml} của repo trước các cell phụ thuộc package. Ở branch này,
+các notebook chuẩn giờ chỉ bootstrap secret \texttt{WANDB2} cho xác thực W\&B;
+chúng không còn đọc \texttt{HF\_TOK\_WRITE\_KAGGLE} ngay khi khởi động notebook.
+\texttt{HF\_TOKEN} chỉ còn cần khi bạn chủ động bật luồng upload lên
+Hugging Face như \texttt{--hf-repo-id} hoặc \texttt{src\_jax/push\_hf.py}.
+Riêng các notebook ablation được generate dưới
+\texttt{generated\_notebooks/vae\_moe1/} sẽ đổi secret W\&B sang
+\texttt{WANDB\_Tung}.
 Repo này tự vá backend \texttt{diffuse\_nnx} để import các model Dinov2 từ
 subpackage của \texttt{transformers}, nên nên dùng
 \texttt{transformers==4.57.1} cho đường này.
