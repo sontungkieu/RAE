@@ -237,7 +237,9 @@ run id mới, rồi giữ nguyên \texttt{exp\_name} gốc để lineage dễ đ
 history W\&B của lần resume vẫn sạch. Adapter giờ cũng coi
 \texttt{train\_step} là trục W\&B chuẩn cho train, eval, FID, và media log,
 rồi mirror chính giá trị này sang internal \texttt{Step} của W\&B để line
-plot không còn bị lệch khi đổi X axis.
+plot không còn bị lệch khi đổi X axis. Cầu nối online FID cũng tắt các lệnh
+ghi W\&B nội bộ từ backend và log lại cả EMA lẫn model FID trên cùng trục này,
+tránh cảnh báo step đi lùi kiểu \texttt{9999 < 10000} trên các run Kaggle dài.
 
 \subsection{FID trong train loop}
 

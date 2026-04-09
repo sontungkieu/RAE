@@ -12,6 +12,7 @@ try:
         _install_strict_wandb_initializer,
         _install_consistent_wandb_step_axis,
         _iter_orbax_checkpoint_dirs,
+        _log_named_fid_scores,
         _load_wandb_resume_metadata,
         _normalize_wandb_log_call,
         _prune_stale_orbax_checkpoints,
@@ -25,6 +26,7 @@ except Exception as exc:  # pragma: no cover - environment-dependent
     _install_strict_wandb_initializer = None
     _install_consistent_wandb_step_axis = None
     _iter_orbax_checkpoint_dirs = None
+    _log_named_fid_scores = None
     _load_wandb_resume_metadata = None
     _normalize_wandb_log_call = None
     _prune_stale_orbax_checkpoints = None
@@ -106,6 +108,24 @@ class Stage2RuntimeWandbTests(unittest.TestCase):
 
         self.assertEqual(fake_wandb.logged[0], ({"learning_rate": 1e-4, "train_step": 77}, 77))
         self.assertEqual(fake_wandb.logged[1], ({"FID-4K (cfg=1.0)": 9.25, "train_step": 88}, 88))
+
+    def test_log_named_fid_scores_uses_plain_metric_name_for_ema(self) -> None:
+        fake_wandb = _FakeWandb(["unused123"])
+        fake_utils = _FakeWandbUtils(fake_wandb)
+        _install_consistent_wandb_step_axis(fake_utils)
+
+        _log_named_fid_scores(
+            fake_utils,
+            {4096: 9.25},
+            guidance_scale=1.0,
+            step=10_000,
+            tag=None,
+        )
+
+        self.assertEqual(
+            fake_wandb.logged[0],
+            ({"FID-4K (cfg=1.0)": 9.25, "train_step": 10_000}, 10_000),
+        )
 
     def test_iter_orbax_checkpoint_dirs_sorts_and_filters_dirs(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir:
