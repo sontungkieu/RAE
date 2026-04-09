@@ -377,7 +377,10 @@ ghi notebook vào \texttt{generated\_notebooks/sitdh\_moe1\_pyr16k/}, cố đị
 \texttt{pyramid\_16k} cho toàn bộ ablation, chuyển secret wandb của notebook
 generated sang \texttt{WANDB\_Tung}, và bơm trực tiếp
 \texttt{--wandb-group}/\texttt{--wandb-tags} để tất cả run cùng nằm dưới group
-\texttt{celeba-sitdh-moe1-pyr16k-ablation}.
+\texttt{celeba-sitdh-moe1-pyr16k-ablation}. Cell \texttt{PYCFG} mà generator
+sinh ra cũng materialize sẵn các biến path như \texttt{celeba\_val\_path}
+trước khi ghi YAML, để script Python nhúng trong notebook luôn hợp lệ thay vì
+phụ thuộc vào biểu thức f-string có lồng dấu nháy.
 
 Nếu đã có thư mục run Orbax của \texttt{SiTDH-B + moe1} và cần train tiếp, dùng
 notebook \texttt{raes-jax-celeba-kaggle-tpuv5e8-sitdh-b-moe1-resume.ipynb}. Notebook

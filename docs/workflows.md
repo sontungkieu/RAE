@@ -525,6 +525,9 @@ That generator writes `generated_notebooks/sitdh_moe1_pyr16k/*.ipynb`, pins the
 offline source builder to `pyramid_16k`, swaps generated notebooks to the
 `WANDB_Tung` Kaggle secret, and injects `--wandb-group/--wandb-tags` so all DH
 ablation runs land under `celeba-sitdh-moe1-pyr16k-ablation` with per-run tags.
+Its generated `PYCFG` cell also materializes path variables like
+`celeba_val_path` before writing YAML, so the embedded config script stays valid
+Python instead of relying on nested quoted expressions inside an f-string.
 
 If you already have an Orbax run directory for `SiTDH-B + moe1` and want to
 continue training from its latest checkpoint, use

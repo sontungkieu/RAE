@@ -170,8 +170,8 @@ def _build_slug(source_cfg: dict[str, Any]) -> str:
     return "-".join(["moe1", "pyr16k", *(f"{prefix}{_compact_slug_value(source_cfg[key])}" for prefix, key in token_specs)])
 
 
-def _build_auto_tags(study_name: str, index: str, source_cfg: dict[str, Any]) -> list[str]:
-    slug = _build_slug(source_cfg)
+def _build_auto_tags(study_name: str, index: str, source_cfg: dict[str, Any], *, slug: str | None = None) -> list[str]:
+    resolved_slug = slug or _build_slug(source_cfg)
     return [
         f"study:{study_name}",
         "dataset:celeba256",
@@ -180,7 +180,7 @@ def _build_auto_tags(study_name: str, index: str, source_cfg: dict[str, Any]) ->
         "source:moe1",
         "gmmfeat:pyramid_16k",
         f"idx:{index}",
-        f"slug:{slug}",
+        f"slug:{resolved_slug}",
         f"modes:{_compact_metric_token(source_cfg['num_modes'])}",
         f"tau:{_compact_metric_token(source_cfg['router_temperature'])}",
         f"var_kl:{_compact_metric_token(source_cfg['var_kl_loss_weight'])}",
@@ -312,7 +312,7 @@ def _render_config_cell(context: dict[str, Any]) -> str:
             "time_dist_shift_base": 4096,
         },
         "eval": {
-            "data_path": "{(celeba_root / 'val').as_posix()}",
+            "data_path": "{celeba_val_path}",
             "eval_every": 5000,
             "batch_size": 4,
             "num_workers": context["eval_cfg"]["num_workers"],
@@ -366,6 +366,7 @@ import textwrap
 
 repo_root = Path("/kaggle/working/RAE")
 celeba_root = Path("/kaggle/working/celeba256_imgfolder")
+celeba_val_path = (celeba_root / "val").as_posix()
 stage1_cfg_path = {stage1_cfg_expr}
 stage2_cfg_path = {stage2_cfg_expr}
 bootstrap_stats_path = Path("/kaggle/working/bootstrap_identity_stat.pt")
@@ -388,7 +389,7 @@ torch.save(
 )
 
 stage1_cfg_text = textwrap.dedent(
-    \"\"\"
+    f\"\"\"
 {stage1_yaml}
     \"\"\"
 ).strip() + "\\n"
@@ -506,7 +507,7 @@ def _prepare_context(spec: dict[str, Any], run_spec: dict[str, Any]) -> dict[str
     safe_token = _slug_to_safe_token(run_prefix)
     stage2_cfg_relpath = Path(spec["paths"]["generated_config_dir"]) / f"{run_prefix}.yaml"
     source_gmm_path = f"{spec['paths']['source_gmm_prefix']}_{safe_token}.npz"
-    auto_tags = _build_auto_tags(spec["study_name"], index, source_cfg)
+    auto_tags = _build_auto_tags(spec["study_name"], index, source_cfg, slug=slug)
     extra_tags = [str(tag) for tag in run_spec.get("extra_tags", [])]
     wandb_tags = auto_tags + [tag for tag in extra_tags if tag not in auto_tags]
     return {
