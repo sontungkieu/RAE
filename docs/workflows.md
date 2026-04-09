@@ -555,8 +555,8 @@ host-loader/diagnostic defaults across both Kaggle and TPU variants:
 `training.log_activation_stats=true`.
 The shipped TPU notebooks on this branch also now default `export PROJECT="moe-diffusion"`; the existing `run_name` strings already carry the dataset, `StabilityVAE`, backbone, `moe1`, and TPU pipeline identifiers, so they do not need an extra project-only suffix.
 The JAX train CLI on this branch also now accepts `--wandb-group` and
-comma-separated `--wandb-tags`, so you can keep short generated run names while
-still grouping ablations cleanly in W&B.
+comma-separated `--wandb-tags`, so each ablation run can keep a shared study
+group while still using its own full slug plus timestamp as the W&B run name.
 
 For numbered CelebA VAE `moe1` ablations, the repo now ships a dedicated spec
 and generator:
@@ -572,9 +572,14 @@ notebooks under
 [`generated_notebooks/vae_moe1/`](../generated_notebooks/vae_moe1/), and writes
 a matching
 [`manifest.csv`](../generated_notebooks/vae_moe1/manifest.csv). The generated
-files keep short names such as `01-moe1-m4-tau2-vk1.ipynb`, but each notebook
-still wires its own `source_gmm_path`, generated Stage 2 config path, results
-root, and W&B `group/tags`.
+files now use explicit names such as
+`01-moe1-m4-tau2-vk1-bl01-ent001-tv1-cd16-hc64.ipynb`. Each generated notebook
+also rewrites its title to match that filename stem, keeps the shared
+`wandb_group=celeba-vae-moe1-ablation`, and logs detailed tags such as
+`study:*`, `dataset:*`, `model:*`, `stage1:*`, `source:*`, `modes:*`, `tau:*`,
+`var_kl:*`, `balance:*`, `entropy:*`, `target_var:*`, `cond_dim:*`, and
+`hidden:*`, while still wiring its own `source_gmm_path`, generated Stage 2
+config path, and results root.
 
 The same branch also keeps the parallel CelebA-HQ TPU `moe1` notebooks:
 [../vaes-jax-celebahq-kaggle-tpuv5e8-sitb-moe1.ipynb](../vaes-jax-celebahq-kaggle-tpuv5e8-sitb-moe1.ipynb),

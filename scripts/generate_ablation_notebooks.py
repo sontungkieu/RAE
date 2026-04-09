@@ -63,6 +63,16 @@ def _apply_ablation_secret_policy(nb: dict[str, Any]) -> None:
             cell["source"] = _split_cell_source(updated)
 
 
+def _apply_title_cell(nb: dict[str, Any], title: str) -> None:
+    for cell in nb.get("cells", []):
+        if cell.get("cell_type") != "markdown":
+            continue
+        source = "".join(cell.get("source", []))
+        if source.startswith("# "):
+            cell["source"] = _split_cell_source(f"# {title}\n")
+            return
+
+
 def _deep_merge(base: dict[str, Any], override: dict[str, Any]) -> dict[str, Any]:
     merged = deepcopy(base)
     for key, value in override.items():
@@ -124,6 +134,20 @@ def _slug_to_safe_token(slug: str) -> str:
     return slug.replace("-", "_")
 
 
+def _compact_slug_value(value: Any) -> str:
+    if isinstance(value, bool):
+        return "1" if value else "0"
+    if isinstance(value, int):
+        return str(value)
+    if isinstance(value, float):
+        if value.is_integer():
+            return str(int(value))
+        rendered = format(value, ".15g")
+    else:
+        rendered = str(value)
+    return rendered.replace(".", "").replace("-", "m")
+
+
 def _compact_metric_token(value: Any) -> str:
     if isinstance(value, float):
         if value.is_integer():
@@ -132,24 +156,40 @@ def _compact_metric_token(value: Any) -> str:
     return str(value)
 
 
-def _build_auto_tags(study_name: str, index: str, source_cfg: dict[str, Any], source_defaults: dict[str, Any]) -> list[str]:
-    tags = [
-        f"idx:{index}",
-        f"study:{study_name}",
-        f"modes:{source_cfg['num_modes']}",
-        f"tau:{_compact_metric_token(source_cfg['router_temperature'])}",
-        f"vk:{_compact_metric_token(source_cfg['var_kl_loss_weight'])}",
+def _build_slug(source_cfg: dict[str, Any]) -> str:
+    token_specs = [
+        ("m", "num_modes"),
+        ("tau", "router_temperature"),
+        ("vk", "var_kl_loss_weight"),
+        ("bl", "balance_loss_weight"),
+        ("ent", "entropy_loss_weight"),
+        ("tv", "target_variance"),
+        ("cd", "condition_dim"),
+        ("hc", "hidden_channels"),
     ]
-    optional_fields = {
-        "hidden_channels": "hc",
-        "condition_dim": "cd",
-        "balance_loss_weight": "bal",
-        "entropy_loss_weight": "ent",
-    }
-    for field, tag_key in optional_fields.items():
-        if source_cfg.get(field) != source_defaults.get(field):
-            tags.append(f"{tag_key}:{_compact_metric_token(source_cfg[field])}")
-    return tags
+    return "-".join(["moe1", *(f"{prefix}{_compact_slug_value(source_cfg[key])}" for prefix, key in token_specs)])
+
+
+def _build_auto_tags(study_name: str, index: str, source_cfg: dict[str, Any], source_defaults: dict[str, Any]) -> list[str]:
+    _ = source_defaults
+    slug = _build_slug(source_cfg)
+    return [
+        f"study:{study_name}",
+        "dataset:celeba256",
+        "model:sitb",
+        "stage1:stabilityvae",
+        "source:moe1",
+        f"idx:{index}",
+        f"slug:{slug}",
+        f"modes:{_compact_metric_token(source_cfg['num_modes'])}",
+        f"tau:{_compact_metric_token(source_cfg['router_temperature'])}",
+        f"var_kl:{_compact_metric_token(source_cfg['var_kl_loss_weight'])}",
+        f"balance:{_compact_metric_token(source_cfg['balance_loss_weight'])}",
+        f"entropy:{_compact_metric_token(source_cfg['entropy_loss_weight'])}",
+        f"target_var:{_compact_metric_token(source_cfg['target_variance'])}",
+        f"cond_dim:{_compact_metric_token(source_cfg['condition_dim'])}",
+        f"hidden:{_compact_metric_token(source_cfg['hidden_channels'])}",
+    ]
 
 
 def _render_setup_cell(context: dict[str, Any]) -> str:
@@ -406,8 +446,8 @@ def _prepare_context(spec: dict[str, Any], run_spec: dict[str, Any]) -> dict[str
     train_cfg = _deep_merge(shared["train"], run_spec.get("train_overrides", {}))
     eval_cfg = _deep_merge(shared["eval"], run_spec.get("eval_overrides", {}))
     gmm_build_cfg = deepcopy(shared["gmm_build"])
-    slug = str(run_spec["slug"])
     index = str(run_spec["index"])
+    slug = str(run_spec.get("slug") or _build_slug(source_cfg))
     run_prefix = f"{index}-{slug}"
     safe_token = _slug_to_safe_token(run_prefix)
     stage2_cfg_relpath = Path(spec["paths"]["generated_config_dir"]) / f"{run_prefix}.yaml"
@@ -473,6 +513,7 @@ def _write_manifest(rows: list[dict[str, Any]], manifest_path: Path) -> None:
         "condition_dim",
         "balance_loss_weight",
         "entropy_loss_weight",
+        "target_variance",
         "train_overrides",
         "eval_overrides",
     ]
@@ -505,6 +546,7 @@ def generate_notebooks(args: argparse.Namespace) -> list[Path]:
     for run_spec in selected_runs:
         context = _prepare_context(spec, run_spec)
         notebook = deepcopy(notebook_template)
+        _apply_title_cell(notebook, context["run_prefix"])
         notebook["cells"][setup_idx]["source"] = _split_cell_source(_render_setup_cell(context))
         notebook["cells"][config_idx]["source"] = _split_cell_source(_render_config_cell(context))
         notebook["cells"][gmm_idx]["source"] = _split_cell_source(_render_gmm_cell(context))
@@ -536,6 +578,7 @@ def generate_notebooks(args: argparse.Namespace) -> list[Path]:
                 "condition_dim": source_cfg["condition_dim"],
                 "balance_loss_weight": _compact_metric_token(source_cfg["balance_loss_weight"]),
                 "entropy_loss_weight": _compact_metric_token(source_cfg["entropy_loss_weight"]),
+                "target_variance": _compact_metric_token(source_cfg["target_variance"]),
                 "train_overrides": json.dumps(run_spec.get("train_overrides", {}), sort_keys=True),
                 "eval_overrides": json.dumps(run_spec.get("eval_overrides", {}), sort_keys=True),
             }

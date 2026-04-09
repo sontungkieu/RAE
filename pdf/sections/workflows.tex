@@ -410,8 +410,9 @@ cùng bộ mặc định loader/chẩn đoán Stage 2 cho cả Kaggle thường 
 \texttt{training.log\_rae\_latent\_stats=true}, và
 \texttt{training.log\_activation\_stats=true}.
 CLI train JAX trên branch này giờ cũng nhận \texttt{--wandb-group} và
-\texttt{--wandb-tags} dạng comma-separated, nên có thể giữ tên run generated
-ngắn mà dashboard W\&B vẫn group/filter được sạch.
+\texttt{--wandb-tags} dạng comma-separated, nên mỗi ablation run có thể giữ
+\texttt{group} chung cho cả study nhưng vẫn dùng tên run riêng dạng full slug
+cộng timestamp.
 
 Cho ablation CelebA VAE \texttt{moe1} dạng đánh số, repo giờ ship sẵn spec và
 generator:
@@ -424,10 +425,16 @@ python3 scripts/generate_ablation_notebooks.py \
 
 Lệnh này đọc notebook TPU template đã commit, sinh các notebook train dưới
 \texttt{generated\_notebooks/vae\_moe1/}, và ghi kèm
-\texttt{generated\_notebooks/vae\_moe1/manifest.csv}. Các notebook sinh ra giữ
-tên ngắn như \texttt{01-moe1-m4-tau2-vk1.ipynb}, nhưng mỗi file vẫn mang riêng
+\texttt{generated\_notebooks/vae\_moe1/manifest.csv}. Các notebook sinh ra giờ
+dùng tên đầy đủ như
+\texttt{01-moe1-m4-tau2-vk1-bl01-ent001-tv1-cd16-hc64.ipynb}, đồng thời đổi cả
+tiêu đề notebook theo đúng stem này. Mỗi file vẫn mang riêng
 \texttt{source\_gmm\_path}, đường dẫn config Stage 2 được generate, results
-root riêng cho study, và W\&B \texttt{group/tags} theo từng cấu hình.
+root riêng cho study, \texttt{wandb\_group=celeba-vae-moe1-ablation}, cùng bộ
+tag chi tiết như \texttt{study:*}, \texttt{dataset:*}, \texttt{model:*},
+\texttt{stage1:*}, \texttt{source:*}, \texttt{modes:*}, \texttt{tau:*},
+\texttt{var\_kl:*}, \texttt{balance:*}, \texttt{entropy:*},
+\texttt{target\_var:*}, \texttt{cond\_dim:*}, và \texttt{hidden:*}.
 
 Branch này cũng giữ song song bộ notebook TPU CelebA-HQ cho flow \texttt{moe1}:
 \texttt{vaes-jax-celebahq-kaggle-tpuv5e8-sitb-moe1.ipynb}, và
