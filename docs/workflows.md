@@ -258,6 +258,9 @@ continues. Resume launches therefore no longer need a duplicate manual
 adapter also now normalizes every JAX W&B payload onto `train_step`, then
 mirrors that same value into W&B's internal `Step`, so line plots stay aligned
 whether you choose `Step` or `train_step` as the X axis.
+The online FID bridge also suppresses backend-side W&B writes and re-logs both
+EMA and model FID metrics through that same normalized axis, so long runs no
+longer emit out-of-order step warnings like `9999 < 10000`.
 
 Current Stage 2 namespaces:
 
