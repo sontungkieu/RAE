@@ -39,6 +39,23 @@ def _bridge_legacy_wandb_env(entity: str | None, project: str | None) -> None:
         os.environ["PROJECT"] = project
 
 
+def _normalize_wandb_tags(raw_tags: Any) -> list[str] | None:
+    if raw_tags is None:
+        return None
+    if isinstance(raw_tags, str):
+        raw_values = [raw_tags]
+    else:
+        raw_values = list(raw_tags)
+
+    normalized: list[str] = []
+    for raw_value in raw_values:
+        for token in str(raw_value).split(","):
+            tag = token.strip()
+            if tag and tag not in normalized:
+                normalized.append(tag)
+    return normalized or None
+
+
 def _coerce_wandb_step(value: Any) -> int | None:
     if value is None:
         return None
@@ -252,6 +269,8 @@ def _install_strict_wandb_initializer(
     *,
     workdir: Path,
     explicit_run_id: str | None,
+    wandb_group: str | None = None,
+    wandb_tags: list[str] | None = None,
 ) -> None:
     def initialize(config: Any, exp_name: str = "dit", project_name: str = "tpu-dit") -> None:
         if not wandb_utils.is_main_process():
@@ -276,12 +295,19 @@ def _install_strict_wandb_initializer(
 
         config_dict = config.to_dict() if hasattr(config, "to_dict") else config
         wandb_utils.wandb.login(key=api_key)
+        base_init_kwargs: dict[str, Any] = {
+            "entity": entity,
+            "project": project_name,
+            "name": exp_name,
+            "config": config_dict,
+        }
+        if wandb_group:
+            base_init_kwargs["group"] = wandb_group
+        if wandb_tags:
+            base_init_kwargs["tags"] = list(wandb_tags)
         try:
             run = wandb_utils.wandb.init(
-                entity=entity,
-                project=project_name,
-                name=exp_name,
-                config=config_dict,
+                **base_init_kwargs,
                 **init_kwargs,
             )
         except Exception as exc:
@@ -294,10 +320,7 @@ def _install_strict_wandb_initializer(
                 flush=True,
             )
             run = wandb_utils.wandb.init(
-                entity=entity,
-                project=project_name,
-                name=exp_name,
-                config=config_dict,
+                **base_init_kwargs,
                 **fallback_kwargs,
             )
 
@@ -1685,16 +1708,22 @@ def run_stage2_training(args: argparse.Namespace) -> Path:
 
     if args.wandb:
         _bridge_legacy_wandb_env(args.wandb_entity, args.wandb_project)
+        wandb_group = str(args.wandb_group) if getattr(args, "wandb_group", None) else None
+        wandb_tags = _normalize_wandb_tags(getattr(args, "wandb_tags", None))
         _install_strict_wandb_initializer(
             backend_wandb,
             workdir=workdir,
             explicit_run_id=getattr(args, "wandb_run_id", None),
+            wandb_group=wandb_group,
+            wandb_tags=wandb_tags,
         )
         if getattr(trainer, "wandb_utils", None) is not backend_wandb:
             _install_strict_wandb_initializer(
                 trainer.wandb_utils,
                 workdir=workdir,
                 explicit_run_id=getattr(args, "wandb_run_id", None),
+                wandb_group=wandb_group,
+                wandb_tags=wandb_tags,
             )
     else:
         _disable_backend_wandb(backend_wandb)

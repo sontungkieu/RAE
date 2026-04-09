@@ -469,6 +469,29 @@ class Stage2RuntimeWandbTests(unittest.TestCase):
             metadata = _load_wandb_resume_metadata(_wandb_resume_metadata_path(workdir))
             self.assertEqual(metadata["run_id"], "fresh999")
 
+    def test_initializer_forwards_wandb_group_and_tags(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            workdir = Path(tmp_dir)
+            fake_wandb = _FakeWandb(["fresh555"])
+            fake_utils = _FakeWandbUtils(fake_wandb)
+            _install_strict_wandb_initializer(
+                fake_utils,
+                workdir=workdir,
+                explicit_run_id=None,
+                wandb_group="celeba-vae-moe1-ablation",
+                wandb_tags=["idx:01", "study:celeba-vae-moe1", "modes:4"],
+            )
+
+            with patch.dict(
+                os.environ,
+                {"WANDB_API_KEY": "secret-key", "WANDB_ENTITY": "entity"},
+                clear=False,
+            ):
+                fake_utils.initialize(_DummyConfig(), exp_name="exp-train", project_name="project")
+
+            self.assertEqual(fake_wandb.calls[0]["group"], "celeba-vae-moe1-ablation")
+            self.assertEqual(fake_wandb.calls[0]["tags"], ["idx:01", "study:celeba-vae-moe1", "modes:4"])
+
     def test_initializer_persists_legacy_binding(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir:
             workdir = Path(tmp_dir)

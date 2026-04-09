@@ -1,0 +1,76 @@
+study_name: celeba-vae-moe1
+template_notebook: vaes-jax-celeba-kaggle-tpuv5e8-sitb-moe1.ipynb
+output_dir: generated_notebooks/vae_moe1
+
+wandb:
+  entity: TungBangDSLab
+  project: moe-diffusion
+  group: celeba-vae-moe1-ablation
+
+paths:
+  stage1_cfg_path: configs/stage1/pretrained/CelebA256_StabilityVAE_jax_tpuv5e8.yaml
+  generated_config_dir: configs/ablation/generated/celeba_vae_moe1
+  source_gmm_prefix: /kaggle/working/celeba256_source_gmm
+  fid_stats_path: /kaggle/working/celeba256_val_fid_stats_cpu.pkl
+  results_dir: /kaggle/working/results_jax_tpu_ablation/celeba_vae_moe1
+
+shared_defaults:
+  source:
+    enabled: true
+    kind: gmm_moe1
+    num_modes: 4
+    condition_dim: 16
+    hidden_channels: 64
+    router_temperature: 2.0
+    soft_moe: true
+    balance_loss_weight: 0.1
+    entropy_loss_weight: 0.01
+    var_kl_loss_weight: 1.0
+    target_variance: 1.0
+    logvar_min: -8.0
+    logvar_max: 4.0
+    var_floor: 1.0e-5
+    posterior_eps: 1.0e-6
+    weight_prior: 1.0e-2
+    em_iters: 100
+    em_tol: 1.0e-4
+    em_restarts: 3
+    dead_count_threshold: 1.0
+    active_mode_fraction_threshold: 0.01
+  train:
+    global_batch_size: 64
+    num_workers: 16
+    prefetch_factor: 4
+    ckpt_every: 290000
+    log_rae_latent_stats: true
+    log_activation_stats: true
+  eval:
+    num_workers: 16
+    prefetch_factor: 4
+    fid_every: 10000
+    fid_num_samples: 4096
+  gmm_build:
+    batch_size: 16
+    num_workers: 16
+    precision: bf16
+
+runs:
+  - index: "01"
+    slug: moe1-m4-tau2-vk1
+    source_overrides:
+      num_modes: 4
+      router_temperature: 2.0
+      var_kl_loss_weight: 1.0
+  - index: "02"
+    slug: moe1-m6-tau2-vk1
+    source_overrides:
+      num_modes: 6
+      router_temperature: 2.0
+      var_kl_loss_weight: 1.0
+  - index: "03"
+    slug: moe1-m6-tau4-vk01-hc96
+    source_overrides:
+      num_modes: 6
+      hidden_channels: 96
+      router_temperature: 4.0
+      var_kl_loss_weight: 0.1

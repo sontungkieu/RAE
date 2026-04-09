@@ -549,6 +549,27 @@ host-loader/diagnostic defaults across both Kaggle and TPU variants:
 `eval.prefetch_factor=4`, `training.log_rae_latent_stats=true`, and
 `training.log_activation_stats=true`.
 The shipped TPU notebooks on this branch also now default `export PROJECT="moe-diffusion"`; the existing `run_name` strings already carry the dataset, `StabilityVAE`, backbone, `moe1`, and TPU pipeline identifiers, so they do not need an extra project-only suffix.
+The JAX train CLI on this branch also now accepts `--wandb-group` and
+comma-separated `--wandb-tags`, so you can keep short generated run names while
+still grouping ablations cleanly in W&B.
+
+For numbered CelebA VAE `moe1` ablations, the repo now ships a dedicated spec
+and generator:
+
+```bash
+python3 scripts/generate_ablation_notebooks.py \
+  --spec configs/ablation/celeba_vae_moe1.yaml \
+  --overwrite
+```
+
+That command reads the checked-in TPU template notebook, generates train-only
+notebooks under
+[`generated_notebooks/vae_moe1/`](../generated_notebooks/vae_moe1/), and writes
+a matching
+[`manifest.csv`](../generated_notebooks/vae_moe1/manifest.csv). The generated
+files keep short names such as `01-moe1-m4-tau2-vk1.ipynb`, but each notebook
+still wires its own `source_gmm_path`, generated Stage 2 config path, results
+root, and W&B `group/tags`.
 
 The same branch also keeps the parallel CelebA-HQ TPU `moe1` notebooks:
 [../vaes-jax-celebahq-kaggle-tpuv5e8-sitb-moe1.ipynb](../vaes-jax-celebahq-kaggle-tpuv5e8-sitb-moe1.ipynb),
