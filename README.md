@@ -336,6 +336,9 @@ name from `wandb_run.json` when present, otherwise it falls back to the
 basename of the workdir. The JAX runtime also now treats `train_step` as the
 canonical W&B axis for train, eval, FID, and media logs, while mirroring the
 same value into W&B's internal `Step` so either axis selection stays aligned.
+The online FID bridge now suppresses backend-side W&B writes and re-logs both
+EMA and model FID series through that same normalized axis, which avoids
+out-of-order warnings such as `9999 < 10000` on long Kaggle runs.
 
 ```bash
 python3 src_jax/sample.py \

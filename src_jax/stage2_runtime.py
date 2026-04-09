@@ -364,13 +364,16 @@ def _log_named_fid_scores(
     *,
     guidance_scale: float,
     step: int,
-    tag: str,
+    tag: str | None,
 ) -> None:
     if not fid_scores:
         return
     payload: dict[str, float | int] = {"train_step": int(step)}
     for num_samples, fid_value in fid_scores.items():
-        payload[f"FID-{num_samples // 1000}K/{tag} (cfg={guidance_scale})"] = float(fid_value)
+        metric_name = f"FID-{num_samples // 1000}K (cfg={guidance_scale})"
+        if tag is not None:
+            metric_name = f"FID-{num_samples // 1000}K/{tag} (cfg={guidance_scale})"
+        payload[metric_name] = float(fid_value)
     wandb_utils.log(payload, step=int(step))
 
 
@@ -391,8 +394,7 @@ def _calculate_backend_fid(
     wandb_utils = trainer.wandb_utils
     original_log = wandb_utils.log
 
-    if tag is not None:
-        wandb_utils.log = lambda *_args, **_kwargs: None
+    wandb_utils.log = lambda *_args, **_kwargs: None
 
     try:
         fid_scores = trainer.fid.calculate_fid(
@@ -408,17 +410,15 @@ def _calculate_backend_fid(
             mesh=mesh,
         )
     finally:
-        if tag is not None:
-            wandb_utils.log = original_log
+        wandb_utils.log = original_log
 
-    if tag is not None:
-        _log_named_fid_scores(
-            wandb_utils,
-            fid_scores,
-            guidance_scale=guidance_scale,
-            step=step,
-            tag=tag,
-        )
+    _log_named_fid_scores(
+        wandb_utils,
+        fid_scores,
+        guidance_scale=guidance_scale,
+        step=step,
+        tag=tag,
+    )
     return fid_scores
 
 
