@@ -491,19 +491,16 @@ The notebook keeps the standard CelebA Kaggle source dataset
 `/kaggle/working/celeba256_imgfolder`, and keeps `eval.data_path` on the
 generated `val` split. The shipped TPU notebooks point `--data-path` at the
 full `ImageFolder` root and still evaluate on `val`.
-For this DH branch, `src_jax/build_source_gmm.py` now defaults to
-`--feature-extractor flatten`, so the offline GMM keeps the full
-`16 x 16 x 768 -> 196608` latent vector by default. The builder still follows
-the low-copy path, but it no longer assumes the backing matrix must stay in
-`float32`: `--storage-dtype auto` resolves large flattened DH runs to
-`float16`, while `--compute-dtype auto` upcasts each EM/KMeans chunk back to
-`float32` during the fit. If someone explicitly forces `--compute-dtype float16`
-on a very wide flattened DH run, the fitter now auto-promotes the offline
-KMeans/EM math back to `float32` to avoid overflow and NaN stalls. That keeps
-the full-latent recipe practical on large hosts without forcing disk-backed
-memmaps. `--feature-extractor pyramid_16k` remains available when you
-explicitly want a structured compressed feature, and
-`--feature-extractor spatial_mean` stays the low-RAM fallback.
+For this DH branch, `src_jax/build_source_gmm.py` still supports the full
+flattened `16 x 16 x 768 -> 196608` latent vector together with the newer
+`--storage-dtype auto` / `--compute-dtype auto` safeguards that keep very wide
+`flatten` runs off the old `float32`-only path and auto-promote offline
+KMeans/EM math back to `float32` if someone explicitly forces
+`--compute-dtype float16`. The shipped DH notebooks on this branch, however,
+now call the builder explicitly with `--feature-extractor pyramid_16k` and
+write `*_source_gmm_pyr16k.npz` artifacts so the default workflow no longer
+depends on full flatten. `--feature-extractor spatial_mean` stays the low-RAM
+fallback when even `pyramid_16k` is too large for the host.
 
 For Kaggle `TPU v5e-8`, use
 [../raes-jax-celeba-kaggle-tpuv5e8-sitdh-b-moe1.ipynb](../raes-jax-celeba-kaggle-tpuv5e8-sitdh-b-moe1.ipynb).
@@ -511,8 +508,8 @@ That copy fixes the Stage 2 CelebA variant to `SiTDH-B + moe1`, syncs the repo
 dependencies into `/tmp/.venv`, clears the `jaxlib` executable-stack flag that
 Kaggle can reject before each JAX import, runs the TPU device check in a fresh
 Python process, keeps Stage 1 and Stage 2 on TPU, builds the JAX `fid_ref`,
-builds `celeba256_source_gmm.npz`, and keeps the default checkpoint cadence at
-`210000` steps. Its generated source block uses `condition_dim=16`,
+builds `celeba256_source_gmm_pyr16k.npz` via `--feature-extractor pyramid_16k`,
+and keeps the default checkpoint cadence at `170000` steps. Its generated source block uses `condition_dim=16`,
 `hidden_channels=256`, `router_temperature=2.0`,
 `balance_loss_weight=0.1`, `entropy_loss_weight=1.0e-2`, and
 `var_kl_loss_weight=1.0`, while the FID build cell intentionally keeps
@@ -522,6 +519,12 @@ across the shipped `moe1` notebooks now all pin `training.num_workers=16`,
 `training.log_rae_latent_stats=true`, and
 `training.log_activation_stats=true`.
 The shipped TPU notebooks on this branch also now default `export PROJECT="moe-diffusion"`; the existing `run_name` strings already carry the dataset, backbone, `moe1`, and TPU pipeline identifiers, so they do not need an extra project-only suffix.
+When you want numbered Kaggle ablations instead of a single hand-edited notebook,
+run `python3 scripts/generate_ablation_notebooks.py --spec configs/ablation/celeba_sitdh_moe1_pyr16k.yaml --overwrite`.
+That generator writes `generated_notebooks/sitdh_moe1_pyr16k/*.ipynb`, pins the
+offline source builder to `pyramid_16k`, swaps generated notebooks to the
+`WANDB_Tung` Kaggle secret, and injects `--wandb-group/--wandb-tags` so all DH
+ablation runs land under `celeba-sitdh-moe1-pyr16k-ablation` with per-run tags.
 
 If you already have an Orbax run directory for `SiTDH-B + moe1` and want to
 continue training from its latest checkpoint, use
@@ -530,7 +533,7 @@ That notebook is intentionally stripped down for the common Kaggle resume case
 where you start from the archived output of the previous notebook. It checks
 that `/kaggle/working/RAE`, `/kaggle/working/celeba256_imgfolder`,
 `/kaggle/working/celeba256_val_fid_stats_cpu.pkl`, and
-`/kaggle/working/celeba256_source_gmm.npz` are present, then finds the newest
+`/kaggle/working/celeba256_source_gmm_pyr16k.npz` are present, then finds the newest
 `CelebA256_SiTDH-B_DINOv2-B_moe1_jax_tpuv5e8-*` workdir under
 `/kaggle/working/results_jax_tpu/`, copies its latest `checkpoint_*` into a
 fresh timestamped resume workdir, seeds that new workdir with a fresh

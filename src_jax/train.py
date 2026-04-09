@@ -22,6 +22,12 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--wandb", action="store_true", help="Enable wandb logging.")
     parser.add_argument("--wandb-entity", default=None, help="Override WANDB entity.")
     parser.add_argument("--wandb-project", default=None, help="Override WANDB project name.")
+    parser.add_argument("--wandb-group", default=None, help="Optional W&B group name for related runs.")
+    parser.add_argument(
+        "--wandb-tags",
+        default=None,
+        help="Optional comma-separated W&B tags for the run.",
+    )
     parser.add_argument(
         "--wandb-run-id",
         default=None,

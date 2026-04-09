@@ -335,19 +335,18 @@ và resize về \texttt{256x256}, rồi materialize dữ liệu thành
 \texttt{training.log\_activation\_stats=true}, và export
 \texttt{RAE\_JAX\_REBUILD\_BACKEND=1} để backend overlay luôn recopy interface
 \texttt{sit\_gmm\_moe1} trong session Kaggle mới. Script
-\texttt{src\_jax/build\_source\_gmm.py} trên branch này giờ mặc định dùng
+\texttt{src\_jax/build\_source\_gmm.py} trên branch này vẫn hỗ trợ full
 \texttt{feature\_extractor=flatten}; với latent RAE \texttt{16 x 16 x 768}, nó
-giữ luôn vector đầy đủ \texttt{196608} chiều khi fit GMM. Builder vẫn đi theo
-đường low-copy, nhưng \texttt{--storage-dtype auto} sẽ chọn
-\texttt{float16} cho backing matrix khi flatten DH quá lớn, còn
-\texttt{--compute-dtype auto} sẽ upcast từng chunk EM/KMeans về
-\texttt{float32}. Nếu ai đó cố ép \texttt{--compute-dtype float16} cho full
-flatten DH quá rộng, fitter giờ cũng sẽ tự promote phần KMeans/EM offline về
-\texttt{float32} để tránh overflow và NaN treo lâu. Nhờ vậy full latent vector
-không còn bắt buộc phải ở \texttt{float32} toàn cục chỉ để fit GMM. Nếu muốn
-bản nén có cấu trúc hơn thì vẫn có thể ép \texttt{pyramid\_16k};
-\texttt{spatial\_mean} tiếp tục là fallback tiết kiệm bộ nhớ khi máy không đủ
-RAM.
+vẫn có thể giữ vector đầy đủ \texttt{196608} chiều khi fit GMM, đồng thời đi
+qua các safeguard mới của \texttt{--storage-dtype auto} và
+\texttt{--compute-dtype auto} để tránh quay lại đường \texttt{float32}-only và
+tự promote phần EM/KMeans offline về \texttt{float32} nếu ai đó cố ép
+\texttt{--compute-dtype float16}. Tuy nhiên, bộ notebook Kaggle ship sẵn trên
+branch này giờ gọi builder một cách tường minh với
+\texttt{--feature-extractor pyramid\_16k} và ghi artifact dạng
+\texttt{*\_source\_gmm\_pyr16k.npz}, nên workflow mặc định không còn phụ thuộc
+vào full flatten nữa. \texttt{spatial\_mean} vẫn là fallback tiết kiệm bộ nhớ
+khi ngay cả \texttt{pyramid\_16k} cũng quá nặng với host.
 
 Nếu chạy trên Kaggle \texttt{TPU v5e-8}, dùng notebook
 \texttt{raes-jax-celeba-kaggle-tpuv5e8-sitdh-b-moe1.ipynb}. Bản này cố định biến thể
@@ -355,8 +354,10 @@ CelebA Stage 2 là \texttt{SiTDH-B + moe1}, sync dependency của repo vào
 \texttt{/tmp/.venv}, tự xóa cờ executable-stack mà Kaggle có thể chặn trên
 \texttt{jaxlib}, chạy bước xác nhận TPU trong một tiến trình Python mới, giữ
 Stage 1 và Stage 2 ở TPU, đồng thời build \texttt{fid\_ref} bằng đúng detector
-backend dùng cho online FID, build thêm \texttt{celeba256\_source\_gmm.npz},
-và giữ cadence checkpoint mặc định ở mốc \texttt{210000} step. Block
+backend dùng cho online FID, build thêm
+\texttt{celeba256\_source\_gmm\_pyr16k.npz} qua
+\texttt{--feature-extractor pyramid\_16k}, và giữ cadence checkpoint mặc định ở
+mốc \texttt{170000} step. Block
 \texttt{source} sinh ra dùng
 \texttt{condition\_dim=16}, \texttt{hidden\_channels=256},
 \texttt{router\_temperature=2.0}, \texttt{balance\_loss\_weight=0.1},
@@ -369,6 +370,14 @@ bộ notebook \texttt{moe1} của branch này cũng đã thống nhất về
 \texttt{training.log\_rae\_latent\_stats=true}, và
 \texttt{training.log\_activation\_stats=true}; riêng cell build FID stats vẫn giữ
 \texttt{src\_jax/build\_fid\_stats.py --num-workers 32}.
+Nếu cần sinh hàng loạt notebook Kaggle thay vì sửa tay từng bản, chạy
+\texttt{python3 scripts/generate\_ablation\_notebooks.py --spec
+configs/ablation/celeba\_sitdh\_moe1\_pyr16k.yaml --overwrite}. Generator này
+ghi notebook vào \texttt{generated\_notebooks/sitdh\_moe1\_pyr16k/}, cố định
+\texttt{pyramid\_16k} cho toàn bộ ablation, chuyển secret wandb của notebook
+generated sang \texttt{WANDB\_Tung}, và bơm trực tiếp
+\texttt{--wandb-group}/\texttt{--wandb-tags} để tất cả run cùng nằm dưới group
+\texttt{celeba-sitdh-moe1-pyr16k-ablation}.
 
 Nếu đã có thư mục run Orbax của \texttt{SiTDH-B + moe1} và cần train tiếp, dùng
 notebook \texttt{raes-jax-celeba-kaggle-tpuv5e8-sitdh-b-moe1-resume.ipynb}. Notebook
@@ -385,7 +394,9 @@ sang một workdir resume mới có timestamp, seed workdir mới bằng một
 \texttt{--workdir} vào \texttt{src\_jax/train.py}. Runtime tiếp tục restore
 \texttt{latest\_step()} từ checkpoint mới nhất, xóa ngay checkpoint vừa
 restore trong workdir mới sau khi state đã vào RAM, và notebook vẫn không còn
-hardcode cả thư mục run có timestamp lẫn \texttt{checkpoint\_100000}.
+hardcode cả thư mục run có timestamp lẫn \texttt{checkpoint\_100000}. Artifact
+GMM mà notebook resume kiểm tra giờ là
+\texttt{celeba256\_source\_gmm\_pyr16k.npz}.
 
 Branch này cũng giữ song song bộ notebook TPU CelebA-HQ cho learned-source:
 \texttt{raes-jax-celebahq-kaggle-tpuv5e8-sitdh-b-moe1.ipynb} và

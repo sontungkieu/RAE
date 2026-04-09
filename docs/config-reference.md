@@ -151,7 +151,7 @@ Typical shape on this branch:
 source:
   enabled: true
   kind: gmm_moe1
-  gmm_stats_path: artifacts/celeba256_source_gmm.npz
+  gmm_stats_path: artifacts/celeba256_source_gmm_pyr16k.npz
   num_modes: 4
   condition_dim: 16
   hidden_channels: 256

@@ -253,6 +253,8 @@ def _install_strict_wandb_initializer(
     *,
     workdir: Path,
     explicit_run_id: str | None,
+    wandb_group: str | None = None,
+    wandb_tags: list[str] | None = None,
 ) -> None:
     def initialize(config: Any, exp_name: str = "dit", project_name: str = "tpu-dit") -> None:
         if not wandb_utils.is_main_process():
@@ -282,6 +284,8 @@ def _install_strict_wandb_initializer(
                 entity=entity,
                 project=project_name,
                 name=exp_name,
+                group=wandb_group,
+                tags=wandb_tags,
                 config=config_dict,
                 **init_kwargs,
             )
@@ -298,6 +302,8 @@ def _install_strict_wandb_initializer(
                 entity=entity,
                 project=project_name,
                 name=exp_name,
+                group=wandb_group,
+                tags=wandb_tags,
                 config=config_dict,
                 **fallback_kwargs,
             )
@@ -1686,16 +1692,21 @@ def run_stage2_training(args: argparse.Namespace) -> Path:
 
     if args.wandb:
         _bridge_legacy_wandb_env(args.wandb_entity, args.wandb_project)
+        wandb_tags = [tag.strip() for tag in str(getattr(args, "wandb_tags", "")).split(",") if tag.strip()]
         _install_strict_wandb_initializer(
             backend_wandb,
             workdir=workdir,
             explicit_run_id=getattr(args, "wandb_run_id", None),
+            wandb_group=getattr(args, "wandb_group", None),
+            wandb_tags=wandb_tags or None,
         )
         if getattr(trainer, "wandb_utils", None) is not backend_wandb:
             _install_strict_wandb_initializer(
                 trainer.wandb_utils,
                 workdir=workdir,
                 explicit_run_id=getattr(args, "wandb_run_id", None),
+                wandb_group=getattr(args, "wandb_group", None),
+                wandb_tags=wandb_tags or None,
             )
     else:
         _disable_backend_wandb(backend_wandb)
