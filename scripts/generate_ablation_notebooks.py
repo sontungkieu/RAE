@@ -324,46 +324,50 @@ def _render_config_cell(context: dict[str, Any]) -> str:
     ]
     stage2_yaml = "\n\n".join(stage2_sections)
 
-    return textwrap.dedent(
-        f"""\
-        %%bash
-        set -euo pipefail
+    return """%%bash
+set -euo pipefail
 
-        cd /kaggle/working/RAE
+cd /kaggle/working/RAE
 
-        uv run python - <<'PYCFG'
-        from pathlib import Path
-        import textwrap
+uv run python - <<'PYCFG'
+from pathlib import Path
+import textwrap
 
-        repo_root = Path("/kaggle/working/RAE")
-        celeba_root = Path("/kaggle/working/celeba256_imgfolder")
-        stage1_cfg_path = {stage1_cfg_expr}
-        stage2_cfg_path = {stage2_cfg_expr}
-        source_gmm_path = Path("{context['source_gmm_path']}")
-        fid_stats_path = Path("{context['fid_stats_path']}")
+repo_root = Path("/kaggle/working/RAE")
+celeba_root = Path("/kaggle/working/celeba256_imgfolder")
+stage1_cfg_path = {stage1_cfg_expr}
+stage2_cfg_path = {stage2_cfg_expr}
+source_gmm_path = Path("{source_gmm_path}")
+fid_stats_path = Path("{fid_stats_path}")
 
-        stage1_cfg_text = textwrap.dedent(
-            \"\"\"
-        {stage1_yaml}
-            \"\"\"
-        ).strip() + "\\n"
+stage1_cfg_text = textwrap.dedent(
+    \"\"\"
+{stage1_yaml}
+    \"\"\"
+).strip() + "\\n"
 
-        stage2_cfg_text = textwrap.dedent(
-            f\"\"\"
-        {stage2_yaml}
-            \"\"\"
-        ).strip() + "\\n"
+stage2_cfg_text = textwrap.dedent(
+    f\"\"\"
+{stage2_yaml}
+    \"\"\"
+).strip() + "\\n"
 
-        stage1_cfg_path.parent.mkdir(parents=True, exist_ok=True)
-        stage2_cfg_path.parent.mkdir(parents=True, exist_ok=True)
-        stage1_cfg_path.write_text(stage1_cfg_text, encoding="utf-8")
-        stage2_cfg_path.write_text(stage2_cfg_text, encoding="utf-8")
+stage1_cfg_path.parent.mkdir(parents=True, exist_ok=True)
+stage2_cfg_path.parent.mkdir(parents=True, exist_ok=True)
+stage1_cfg_path.write_text(stage1_cfg_text, encoding="utf-8")
+stage2_cfg_path.write_text(stage2_cfg_text, encoding="utf-8")
 
-        print(f"Wrote {{stage1_cfg_path}}")
-        print(f"Wrote {{stage2_cfg_path}}")
-        print(f"Stage 2 source artifact path: {{source_gmm_path}}")
-        PYCFG
-        """
+print(f"Wrote {{stage1_cfg_path}}")
+print(f"Wrote {{stage2_cfg_path}}")
+print(f"Stage 2 source artifact path: {{source_gmm_path}}")
+PYCFG
+""".format(
+        stage1_cfg_expr=stage1_cfg_expr,
+        stage2_cfg_expr=stage2_cfg_expr,
+        source_gmm_path=context["source_gmm_path"],
+        fid_stats_path=context["fid_stats_path"],
+        stage1_yaml=stage1_yaml,
+        stage2_yaml=stage2_yaml,
     )
 
 
