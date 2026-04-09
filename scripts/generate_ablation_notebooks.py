@@ -106,7 +106,7 @@ def _format_scalar(value: Any) -> str:
     return f"'{escaped}'"
 
 
-def _render_mapping(name: str, payload: dict[str, Any], *, indent: int = 4) -> str:
+def _render_mapping(name: str, payload: dict[str, Any], *, indent: int = 0) -> str:
     lines: list[str] = []
 
     def render_dict(mapping: dict[str, Any], depth: int) -> None:
@@ -318,9 +318,9 @@ def _render_config_cell(context: dict[str, Any]) -> str:
     stage2_payload["eval"]["data_path"] = '{(celeba_root / "val").as_posix()}'
     stage2_payload["eval"]["fid_ref"] = "{fid_stats_path.as_posix()}"
 
-    stage1_yaml = _render_mapping("stage_1", stage1_payload["stage_1"], indent=4)
+    stage1_yaml = _render_mapping("stage_1", stage1_payload["stage_1"], indent=0)
     stage2_sections = [
-        _render_mapping(key, value, indent=4)
+        _render_mapping(key, value, indent=0)
         for key, value in stage2_payload.items()
     ]
     stage2_yaml = "\n\n".join(stage2_sections)
