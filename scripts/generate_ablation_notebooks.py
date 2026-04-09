@@ -14,6 +14,7 @@ import yaml
 REPO_ROOT = Path(__file__).resolve().parents[1]
 SETUP_CELL_ANCHOR = 'stage2_results_dir = Path("/kaggle/working/results_jax_tpu")'
 CONFIG_CELL_ANCHOR = "stage2_cfg_text = textwrap.dedent("
+VIEW_CELL_ANCHOR = "uv run python - <<'PYVIEW'"
 GMM_CELL_ANCHOR = "uv run python src_jax/build_source_gmm.py"
 TRAIN_CELL_ANCHOR = 'run_name="CelebA256_SiT-B_StabilityVAE_moe1_jax_tpuv5e8-${timestamp}"'
 
@@ -396,6 +397,32 @@ def _render_gmm_cell(context: dict[str, Any]) -> str:
     )
 
 
+def _render_view_cell(context: dict[str, Any]) -> str:
+    stage1_cfg_expr = _path_expr_from_repo_root(context["stage1_cfg_relpath"])
+    stage2_cfg_expr = _path_expr_from_repo_root(context["stage2_cfg_relpath"])
+    return textwrap.dedent(
+        f"""\
+        %%bash
+        set -euo pipefail
+
+        cd /kaggle/working/RAE
+
+        uv run python - <<'PYVIEW'
+        from pathlib import Path
+
+        repo_root = Path("/kaggle/working/RAE")
+
+        for path in [
+            {stage1_cfg_expr},
+            {stage2_cfg_expr},
+        ]:
+            print(f"=== {{path}} ===")
+            print(path.read_text())
+        PYVIEW
+        """
+    )
+
+
 def _render_train_cell(context: dict[str, Any]) -> str:
     tags_csv = ",".join(context["wandb_tags"])
     train_cfg = context["train_cfg"]
@@ -541,6 +568,7 @@ def generate_notebooks(args: argparse.Namespace) -> list[Path]:
 
     setup_idx = _find_cell_index(notebook_template, SETUP_CELL_ANCHOR)
     config_idx = _find_cell_index(notebook_template, CONFIG_CELL_ANCHOR)
+    view_idx = _find_cell_index(notebook_template, VIEW_CELL_ANCHOR)
     gmm_idx = _find_cell_index(notebook_template, GMM_CELL_ANCHOR)
     train_idx = _find_cell_index(notebook_template, TRAIN_CELL_ANCHOR)
 
@@ -553,6 +581,7 @@ def generate_notebooks(args: argparse.Namespace) -> list[Path]:
         _apply_title_cell(notebook, context["run_prefix"])
         notebook["cells"][setup_idx]["source"] = _split_cell_source(_render_setup_cell(context))
         notebook["cells"][config_idx]["source"] = _split_cell_source(_render_config_cell(context))
+        notebook["cells"][view_idx]["source"] = _split_cell_source(_render_view_cell(context))
         notebook["cells"][gmm_idx]["source"] = _split_cell_source(_render_gmm_cell(context))
         notebook["cells"][train_idx]["source"] = _split_cell_source(_render_train_cell(context))
         _apply_ablation_secret_policy(notebook)

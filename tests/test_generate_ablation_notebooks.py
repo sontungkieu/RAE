@@ -52,8 +52,10 @@ class GenerateAblationNotebooksTests(unittest.TestCase):
             build_cell = next(source for source in cell_sources if "build_source_gmm.py" in source)
             train_cell = next(source for source in cell_sources if "src_jax/train.py" in source)
             config_cell = next(source for source in cell_sources if "stage2_cfg_text = textwrap.dedent" in source)
+            view_cell = next(source for source in cell_sources if "PYVIEW" in source)
 
             self.assertTrue(config_cell.startswith("%%bash\n"))
+            self.assertIn('repo_root / "configs" / "ablation" / "generated" / "celeba_vae_moe1" / "03-moe1-m6-tau4-vk01-bl01-ent001-tv1-cd16-hc96.yaml"', view_cell)
             self.assertIn("--output /kaggle/working/celeba256_source_gmm_03_moe1_m6_tau4_vk01_bl01_ent001_tv1_cd16_hc96.npz", build_cell)
             self.assertIn("--num-modes 6", build_cell)
             self.assertIn("# 03-moe1-m6-tau4-vk01-bl01-ent001-tv1-cd16-hc96", title_cell)

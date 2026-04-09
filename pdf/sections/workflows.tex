@@ -434,7 +434,9 @@ root riêng cho study, \texttt{wandb\_group=celeba-vae-moe1-ablation}, cùng b�
 tag chi tiết như \texttt{study:*}, \texttt{dataset:*}, \texttt{model:*},
 \texttt{stage1:*}, \texttt{source:*}, \texttt{modes:*}, \texttt{tau:*},
 \texttt{var\_kl:*}, \texttt{balance:*}, \texttt{entropy:*},
-\texttt{target\_var:*}, \texttt{cond\_dim:*}, và \texttt{hidden:*}.
+\texttt{target\_var:*}, \texttt{cond\_dim:*}, và \texttt{hidden:*}. Cell
+\texttt{PYVIEW} trong notebook generated cũng đọc thẳng file config Stage 2
+riêng của run thay vì quay lại template gốc.
 
 Branch này cũng giữ song song bộ notebook TPU CelebA-HQ cho flow \texttt{moe1}:
 \texttt{vaes-jax-celebahq-kaggle-tpuv5e8-sitb-moe1.ipynb}, và
