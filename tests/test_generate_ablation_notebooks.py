@@ -35,8 +35,8 @@ class GenerateAblationNotebooksTests(unittest.TestCase):
             self.assertEqual(
                 [path.name for path in notebook_paths],
                 [
-                    "01-moe1-pyr16k-m4-tau2-vk1-bl01-ent001-tv1-cd16-hc256.ipynb",
-                    "04-moe1-pyr16k-m6-tau4-vk01-bl01-ent001-tv1-cd24-hc256.ipynb",
+                    "01-moe1-pyr16k-m4-tau2-vk1-bl01-ent001-tv1-cd16-hc128.ipynb",
+                    "04-moe1-pyr16k-m6-tau2-vk01-bl01-ent001-tv1-cd24-hc256.ipynb",
                 ],
             )
 
@@ -58,9 +58,9 @@ class GenerateAblationNotebooksTests(unittest.TestCase):
             gmm_cell = next(source for source in cell_sources if "build_source_gmm.py" in source)
             train_cell = next(source for source in cell_sources if "src_jax/train.py" in source)
 
-            self.assertEqual(title_cell, "# 04-moe1-pyr16k-m6-tau4-vk01-bl01-ent001-tv1-cd24-hc256\n")
-            self.assertIn('/kaggle/working/celeba256_source_gmm_pyr16k_04_moe1_pyr16k_m6_tau4_vk01_bl01_ent001_tv1_cd24_hc256.npz', setup_cell)
-            self.assertIn('repo_root / "configs" / "ablation" / "generated" / "celeba_sitdh_moe1_pyr16k" / "04-moe1-pyr16k-m6-tau4-vk01-bl01-ent001-tv1-cd24-hc256.yaml"', config_cell)
+            self.assertEqual(title_cell, "# 04-moe1-pyr16k-m6-tau2-vk01-bl01-ent001-tv1-cd24-hc256\n")
+            self.assertIn('/kaggle/working/celeba256_source_gmm_pyr16k_04_moe1_pyr16k_m6_tau2_vk01_bl01_ent001_tv1_cd24_hc256.npz', setup_cell)
+            self.assertIn('repo_root / "configs" / "ablation" / "generated" / "celeba_sitdh_moe1_pyr16k" / "04-moe1-pyr16k-m6-tau2-vk01-bl01-ent001-tv1-cd24-hc256.yaml"', config_cell)
             self.assertIn('celeba_val_path = (celeba_root / "val").as_posix()', config_cell)
             self.assertIn("hidden_channels: 256", config_cell)
             self.assertIn("condition_dim: 24", config_cell)
@@ -70,12 +70,12 @@ class GenerateAblationNotebooksTests(unittest.TestCase):
             self.assertIn("normalization_stat_path: '{latent_stats_path.as_posix()}'", config_cell)
             self.assertIn("--feature-extractor pyramid_16k", gmm_cell)
             self.assertIn("--storage-dtype float16", gmm_cell)
-            self.assertIn("--output /kaggle/working/celeba256_source_gmm_pyr16k_04_moe1_pyr16k_m6_tau4_vk01_bl01_ent001_tv1_cd24_hc256.npz", gmm_cell)
-            self.assertIn('run_slug="04-moe1-pyr16k-m6-tau4-vk01-bl01-ent001-tv1-cd24-hc256"', train_cell)
+            self.assertIn("--output /kaggle/working/celeba256_source_gmm_pyr16k_04_moe1_pyr16k_m6_tau2_vk01_bl01_ent001_tv1_cd24_hc256.npz", gmm_cell)
+            self.assertIn('run_slug="04-moe1-pyr16k-m6-tau2-vk01-bl01-ent001-tv1-cd24-hc256"', train_cell)
             self.assertIn('--wandb-group "${wandb_group}"', train_cell)
             self.assertIn('--wandb-tags "${wandb_tags}"', train_cell)
             self.assertIn("gmmfeat:pyramid_16k", train_cell)
-            self.assertIn("slug:moe1-pyr16k-m6-tau4-vk01-bl01-ent001-tv1-cd24-hc256", train_cell)
+            self.assertIn("slug:moe1-pyr16k-m6-tau2-vk01-bl01-ent001-tv1-cd24-hc256", train_cell)
             self.assertIn('secrets.get_secret("WANDB_Tung")', "".join(cell_sources))
             self.assertNotIn('secrets.get_secret("WANDB2")', "".join(cell_sources))
 
