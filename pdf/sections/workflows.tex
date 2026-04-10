@@ -436,9 +436,12 @@ root riêng cho study, \texttt{wandb\_group=celeba-vae-moe1-ablation}, cùng b�
 tag chi tiết như \texttt{study:*}, \texttt{dataset:*}, \texttt{model:*},
 \texttt{stage1:*}, \texttt{source:*}, \texttt{modes:*}, \texttt{tau:*},
 \texttt{var\_kl:*}, \texttt{balance:*}, \texttt{entropy:*},
-\texttt{target\_var:*}, \texttt{cond\_dim:*}, và \texttt{hidden:*}. Cell
-\texttt{PYVIEW} trong notebook generated cũng đọc thẳng file config Stage 2
-riêng của run thay vì quay lại template gốc.
+\texttt{target\_var:*}, \texttt{cond\_dim:*}, và \texttt{hidden:*}. Spec VAE
+ablation ship sẵn cũng pin \texttt{training.total\_steps: 290000}, và cell
+train được generate sẽ forward lại override này một cách tường minh để các run
+Kaggle không dừng sau fallback mặc định một epoch của adapter ở khoảng
+\texttt{20k} steps. Cell \texttt{PYVIEW} trong notebook generated cũng đọc
+thẳng file config Stage 2 riêng của run thay vì quay lại template gốc.
 
 Branch này cũng giữ song song bộ notebook TPU CelebA-HQ cho flow \texttt{moe1}:
 \texttt{vaes-jax-celebahq-kaggle-tpuv5e8-sitb-moe1.ipynb}, và

@@ -582,8 +582,12 @@ also rewrites its title to match that filename stem, keeps the shared
 `study:*`, `dataset:*`, `model:*`, `stage1:*`, `source:*`, `modes:*`, `tau:*`,
 `var_kl:*`, `balance:*`, `entropy:*`, `target_var:*`, `cond_dim:*`, and
 `hidden:*`, while still wiring its own `source_gmm_path`, generated Stage 2
-config path, and results root. The generated `PYVIEW` config cell also reads
-that run-specific Stage 2 YAML instead of the base template path.
+config path, and results root. The shipped CelebA VAE ablation spec also pins
+`training.total_steps: 290000`, and the generated train cell forwards the same
+override explicitly so those Kaggle runs do not stop after the adapter's
+default one-epoch fallback at roughly `20k` steps. The generated `PYVIEW`
+config cell also reads that run-specific Stage 2 YAML instead of the base
+template path.
 
 The same branch also keeps the parallel CelebA-HQ TPU `moe1` notebooks:
 [../vaes-jax-celebahq-kaggle-tpuv5e8-sitb-moe1.ipynb](../vaes-jax-celebahq-kaggle-tpuv5e8-sitb-moe1.ipynb),

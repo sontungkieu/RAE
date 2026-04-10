@@ -427,6 +427,9 @@ def _render_train_cell(context: dict[str, Any]) -> str:
     tags_csv = ",".join(context["wandb_tags"])
     train_cfg = context["train_cfg"]
     eval_cfg = context["eval_cfg"]
+    total_steps_line = ""
+    if "total_steps" in train_cfg:
+        total_steps_line = f"          --set training.total_steps={train_cfg['total_steps']} \\\n"
     return textwrap.dedent(
         f"""\
         %%bash
@@ -457,6 +460,7 @@ def _render_train_cell(context: dict[str, Any]) -> str:
           --wandb-group "${{wandb_group}}" \\
           --wandb-tags "${{wandb_tags}}" \\
           --set training.global_batch_size={train_cfg['global_batch_size']} \\
+{total_steps_line}\
           --set training.num_workers={train_cfg['num_workers']} \\
           --set training.prefetch_factor={train_cfg['prefetch_factor']} \\
           --set training.ckpt_every={train_cfg['ckpt_every']} \\
