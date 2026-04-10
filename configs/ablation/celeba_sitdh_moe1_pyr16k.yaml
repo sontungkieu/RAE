@@ -106,3 +106,14 @@ runs:
       condition_dim: 32
       router_temperature: 2.0
       var_kl_loss_weight: 1.0
+  - index: "06"
+    slug: moe1-pyr16k-m6-tau2-vk1-bl01-ent001-tv1-cd16-hc128
+    source_overrides:
+      num_modes: 6
+      condition_dim: 16
+      hidden_channels: 128
+      router_temperature: 2.0
+      balance_loss_weight: 0.1
+      entropy_loss_weight: 0.01
+      var_kl_loss_weight: 1.0
+      target_variance: 1.0
