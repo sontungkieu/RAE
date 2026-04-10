@@ -409,8 +409,13 @@ def _calculate_backend_fid(
 ) -> dict[int, float]:
     wandb_utils = trainer.wandb_utils
     original_log = wandb_utils.log
+    wandb_module = getattr(wandb_utils, "wandb", None)
+    original_module_log = getattr(wandb_module, "log", None)
 
-    wandb_utils.log = lambda *_args, **_kwargs: None
+    noop_log = lambda *_args, **_kwargs: None
+    wandb_utils.log = noop_log
+    if callable(original_module_log):
+        wandb_module.log = noop_log
 
     try:
         fid_scores = trainer.fid.calculate_fid(
@@ -427,6 +432,8 @@ def _calculate_backend_fid(
         )
     finally:
         wandb_utils.log = original_log
+        if callable(original_module_log):
+            wandb_module.log = original_module_log
 
     _log_named_fid_scores(
         wandb_utils,

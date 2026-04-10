@@ -10,6 +10,7 @@ from unittest.mock import patch
 
 try:
     from src_jax.stage2_runtime import (
+        _calculate_backend_fid,
         _delete_orbax_checkpoints,
         _install_strict_wandb_initializer,
         _install_consistent_wandb_step_axis,
@@ -25,6 +26,7 @@ try:
     )
     _IMPORT_ERROR = None
 except Exception as exc:  # pragma: no cover - environment-dependent
+    _calculate_backend_fid = None
     _delete_orbax_checkpoints = None
     _install_strict_wandb_initializer = None
     _install_consistent_wandb_step_axis = None
@@ -102,6 +104,7 @@ class _FakeWandb:
 class _FakeWandbUtils:
     def __init__(self, fake_wandb: _FakeWandb) -> None:
         self.wandb = fake_wandb
+        self.log = fake_wandb.log
 
     @staticmethod
     def is_main_process() -> bool:
@@ -205,6 +208,40 @@ class Stage2RuntimeWandbTests(unittest.TestCase):
         self.assertEqual(
             fake_wandb.logged[0],
             ({"FID-4K (cfg=1.0)": 9.25, "train_step": 10_000}, 10_000),
+        )
+
+    def test_calculate_backend_fid_suppresses_backend_wandb_logs_before_relogging(self) -> None:
+        fake_wandb = _FakeWandb(["unused123"])
+        fake_utils = _FakeWandbUtils(fake_wandb)
+        _install_consistent_wandb_step_axis(fake_utils)
+
+        def _calculate_fid(*_args: object, **_kwargs: object) -> dict[int, float]:
+            fake_utils.log({"backend/fid_utils": 1.0}, step=9_999)
+            fake_wandb.log({"backend/fid_module": 2.0}, step=9_999)
+            return {4096: 9.25}
+
+        trainer = SimpleNamespace(
+            wandb_utils=fake_utils,
+            fid=SimpleNamespace(calculate_fid=_calculate_fid),
+        )
+
+        result = _calculate_backend_fid(
+            trainer,
+            config=object(),
+            dataset=object(),
+            sampler=object(),
+            generator=object(),
+            encoder=object(),
+            guidance_scale=1.0,
+            sample_sizes=(4096,),
+            step=10_000,
+            mesh=object(),
+        )
+
+        self.assertEqual(result, {4096: 9.25})
+        self.assertEqual(
+            fake_wandb.logged,
+            [({"FID-4K (cfg=1.0)": 9.25, "train_step": 10_000}, 10_000)],
         )
 
     def test_iter_orbax_checkpoint_dirs_sorts_and_filters_dirs(self) -> None:
