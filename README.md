@@ -37,6 +37,8 @@ Use the docs folder as the detailed guide for this branch:
 - [raes-jax-celeba-kaggle-tpuv5e8-sitdh-b-moe1-resume.ipynb](raes-jax-celeba-kaggle-tpuv5e8-sitdh-b-moe1-resume.ipynb): minimal `TPU v5e-8` resume-only notebook for the `SiTDH-B + moe1` variant, auto-detecting the newest `CelebA256_SiTDH-B_DINOv2-B_moe1_jax_tpuv5e8-*` Orbax run, requiring the persisted `celeba256_source_gmm_pyr16k.npz` artifact, then cloning the newest checkpoint into a fresh timestamped resume workdir with a fresh `wandb_run.json` so the resumed job keeps the original experiment name but logs to a new W&B run
 - [raes-jax-celebahq-kaggle-tpuv5e8-sitdh-b-moe1.ipynb](raes-jax-celebahq-kaggle-tpuv5e8-sitdh-b-moe1.ipynb): CelebA-HQ TPU `v5e-8` notebook for the `SiTDH-B + moe1` recipe, now also building an explicit `pyramid_16k` source artifact as `celebahq256_source_gmm_pyr16k.npz`
 - [raes-jax-celebahq-kaggle-tpuv5e8-sitdh-b-moe1-resume.ipynb](raes-jax-celebahq-kaggle-tpuv5e8-sitdh-b-moe1-resume.ipynb): resume-only CelebA-HQ TPU notebook for the `SiTDH-B + moe1` runs, cloning the newest checkpoint into a fresh timestamped resume workdir with a fresh `wandb_run.json` while requiring the persisted `celebahq256_source_gmm_pyr16k.npz` artifact
+- [tunedinov2-stage1-scratch-kaggle.ipynb](tunedinov2-stage1-scratch-kaggle.ipynb): Kaggle GPU notebook that prepares a CelebA or CelebA-HQ `ImageFolder`, writes a Stage 1 config, trains the ViT decoder from scratch with a frozen DINOv2 encoder, and logs the run to W&B project `TuneDinoV2`
+- [tunedinov2-stage1-finetune-dinov2-kaggle.ipynb](tunedinov2-stage1-finetune-dinov2-kaggle.ipynb): Kaggle GPU notebook that initializes from the ImageNet DINOv2 decoder or an existing Stage 1 checkpoint, unfreezes the DINOv2 encoder, and logs the finetuning run to W&B project `TuneDinoV2`
 
 The shipped hand-maintained Kaggle notebooks on this branch now only bootstrap
 the `WANDB2` secret for W&B authentication, while generated ablation notebooks
@@ -174,7 +176,10 @@ configures the discriminator architecture and the LPIPS/GAN loss schedule.
 
 We release decoders for DINOv2-B, SigLIP-B, MAE-B, at `configs/stage1/pretrained/`.
 
-There is also a training script for training a ViT-XL decoder on DINOv2-B: `configs/stage1/training/DINOv2-B_decXL.yaml`
+There is also a training config for a ViT-XL decoder on DINOv2-B at `configs/stage1/training/DINOv2-B_decXL.yaml`.
+For actual adversarial Stage 1 runs on a local GPU / Kaggle GPU, use the new
+trainer `src/train_stage1_rae.py`, which consumes `stage_1`, `training`,
+`gan`, and optional `data` / `eval` blocks.
 
 #### Stage2
 
@@ -182,6 +187,26 @@ This branch provides SiTDH config templates for both training and sampling at `c
 The checked-in sampling configs intentionally leave `stage_2.ckpt` and `guidance.guidance_model.ckpt` as `null` until you point them at SiTDH-compatible weights.
 
 ## Stage 1: Representation Autoencoder
+
+### Training on Local GPU
+
+Use `src/train_stage1_rae.py` when you want to train a Stage 1 decoder from
+scratch or finetune the DINOv2 encoder on a local GPU / Kaggle GPU:
+
+```bash
+uv run python src/train_stage1_rae.py \
+  --config configs/stage1/training/DINOv2-B_decXL.yaml \
+  --train-data-path /path/to/train_imagefolder \
+  --val-data-path /path/to/val_imagefolder \
+  --results-dir results_stage1 \
+  --exp-name tunedinov2-stage1 \
+  --wandb \
+  --wandb-project TuneDinoV2
+```
+
+The trainer writes `checkpoints/last.pt`, `checkpoints/best.pt`, PNG preview
+grids under `samples/`, and logs Stage 1 reconstruction losses, GAN losses,
+latent stats, learning rates, grad norms, and train/val reconstructions to W&B.
 
 ### Sampling/Reconstruction
 
@@ -399,6 +424,8 @@ Key behavior:
 - `src_jax/moe1/` plus `src_jax/backend_overlay/diffuse_nnx/interfaces/continuous_moe1.py` implement the learned source stack. On this branch the CNN-MoE runs directly on the RAE latent layout `B x 16 x 16 x 768`, so the current default source recipe keeps a wider trunk at `hidden_channels=256` while otherwise following the newer `shortcut-models@moe1` knobs more closely: `condition_dim=16`, `router_temperature=2.0`, `balance_loss_weight=0.1`, `entropy_loss_weight=1.0e-2`, and `var_kl_loss_weight=1.0`. The same path also logs `train_source_logvar_mean` and `train_source_var_mean`.
 - `ENTITY` / `PROJECT` / `WANDB_KEY` are bridged to the `WANDB_*` variables expected by the JAX backend.
 - `src_jax/train.py` also accepts `--wandb-group` and `--wandb-tags`, which the new DH ablation generator uses to keep all `pyramid_16k` runs under one W&B group while still attaching per-run metadata tags.
+- `src/train_stage1_rae.py` is the local PyTorch/CUDA Stage 1 trainer for adversarial decoder training. It reads `stage_1`, `training`, `gan`, optional `data`, and optional `eval`; writes `last.pt` / `best.pt` checkpoints plus preview PNGs; and can either keep the DINOv2 encoder frozen or unfreeze it with a separate `training.encoder_lr`.
+- `scripts/generate_tunedinov2_notebooks.py` is the small template generator that rewrites `tunedinov2-stage1-scratch-kaggle.ipynb` and `tunedinov2-stage1-finetune-dinov2-kaggle.ipynb` from one maintained source.
 - `--hf-repo-id` on `src_jax/train.py` uploads the finished workdir directly to Hugging Face.
 - `src_jax/build_fid_stats.py` builds backend-native `fid_ref` files with the same Flax Inception detector used by JAX online FID.
 - `training.log_rae_latent_stats=true` makes the JAX train loop log RMS and variance of the Stage 1 RAE latents actually consumed by Stage 2, while `training.log_activation_stats=true` logs RMS and variance for the SiTDH output and each encoder/decoder activation block.
@@ -412,6 +439,8 @@ Key behavior:
 - `raes-jax-celeba-kaggle-tpuv5e8-sitdh-b-moe1-resume.ipynb` is the resume-only Kaggle TPU notebook for the latest `CelebA256_SiTDH-B_DINOv2-B_moe1_jax_tpuv5e8-*` Orbax workdir, keeps the persisted `celeba256_source_gmm_pyr16k.npz` artifact in place, copies the newest `checkpoint_*` into a new timestamped resume workdir, writes a fresh `wandb_run.json` with a new run ID, and keeps the original experiment name for lineage.
 - For numbered DH ablations on Kaggle, run `python3 scripts/generate_ablation_notebooks.py --spec configs/ablation/celeba_sitdh_moe1_pyr16k.yaml --overwrite`. The generator materializes `generated_notebooks/sitdh_moe1_pyr16k/*.ipynb`, pins every run to `pyramid_16k`, switches generated notebooks to the Kaggle secret `WANDB_Tung`, injects `--wandb-group/--wandb-tags` metadata so the resulting runs land under the shared W&B group `celeba-sitdh-moe1-pyr16k-ablation`, and writes the `PYCFG` cell with precomputed path variables such as `celeba_val_path` so the emitted config script stays valid Python even after manual spec edits.
 - Branch này cũng giữ song song bộ notebook TPU `moe1` cho CelebA-HQ: `raes-jax-celebahq-kaggle-tpuv5e8-sitdh-b-moe1.ipynb` và `raes-jax-celebahq-kaggle-tpuv5e8-sitdh-b-moe1-resume.ipynb`, để cùng chung code learned-source nhưng tách workflow dữ liệu/runs theo pipeline HQ.
+- `tunedinov2-stage1-scratch-kaggle.ipynb` is the shipped Kaggle GPU notebook for Stage 1 decoder training from scratch with a frozen DINOv2 encoder, full W&B logging, and CelebA / CelebA-HQ `ImageFolder` preparation.
+- `tunedinov2-stage1-finetune-dinov2-kaggle.ipynb` is the shipped Kaggle GPU notebook for Stage 1 finetuning with a trainable DINOv2 encoder, optional Stage 1 checkpoint initialization, and full W&B logging to `TuneDinoV2`.
 
 Current limitation:
 

@@ -441,6 +441,40 @@ python3 src_jax/stage1_sample.py \
 This is intentionally scoped to inference and checkpoint verification. The
 adversarial Stage 1 training loop has not been ported to JAX in this branch.
 
+### Stage 1 Training on a Local GPU
+
+Use the local PyTorch/CUDA trainer when you want to train a Stage 1 decoder from
+scratch or finetune DINOv2 without touching the JAX path:
+
+```bash
+uv run python src/train_stage1_rae.py \
+  --config configs/stage1/training/DINOv2-B_decXL.yaml \
+  --train-data-path /path/to/train_imagefolder \
+  --val-data-path /path/to/val_imagefolder \
+  --results-dir results_stage1 \
+  --exp-name tunedinov2-stage1 \
+  --wandb \
+  --wandb-project TuneDinoV2
+```
+
+Key behavior:
+
+- reads `stage_1`, `training`, `gan`, plus optional `data` and `eval`
+- writes `checkpoints/last.pt` and `checkpoints/best.pt`
+- exports preview PNG grids under `samples/`
+- logs `L1`, `LPIPS`, GAN losses, latent RMS/variance, grad norms, learning
+  rates, and train/val reconstructions to W&B
+- supports either a frozen encoder or a trainable DINOv2 encoder through
+  `training.train_encoder` and `training.encoder_lr`
+
+For Kaggle GPU runs, the shipped notebooks
+[../tunedinov2-stage1-scratch-kaggle.ipynb](../tunedinov2-stage1-scratch-kaggle.ipynb)
+and
+[../tunedinov2-stage1-finetune-dinov2-kaggle.ipynb](../tunedinov2-stage1-finetune-dinov2-kaggle.ipynb)
+wrap this same trainer with face-dataset preparation and default W&B project
+`TuneDinoV2`. If you need to refresh both notebooks after editing the template,
+run `python3 scripts/generate_tunedinov2_notebooks.py`.
+
 ### Stage 1 Latent Stats on the JAX Path
 
 For a new dataset, first bootstrap normalization with an identity stats file,
@@ -656,7 +690,8 @@ the same Flax Inception detector used by the backend online FID path.
   not need to be part of `parse_configs(...)`.
 - `src/sample.py` and `src/sample_ddp.py` only support the manual ODE path on
   this branch.
-- Stage 1 reconstruction scripts are for inference and inspection; this branch
-  does not include a local Stage 1 trainer entrypoint.
+- Stage 1 reconstruction scripts remain the simplest inference/debug path. For
+  adversarial Stage 1 training use `src/train_stage1_rae.py`; there is still no
+  JAX port of that trainer in this branch.
 - For CPU-only FID, increase `fid_batch_size` cautiously. Throughput improves
   until memory bandwidth becomes the bottleneck.

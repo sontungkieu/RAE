@@ -15,6 +15,9 @@ Tất cả entrypoint quan trọng đều dựa trên YAML của repo. Các bloc
   \item \texttt{eval}.
 \end{itemize}
 
+Local trainer \texttt{src/train\_stage1\_rae.py} còn đọc thêm hai block
+top-level: \texttt{gan} và \texttt{data}.
+
 \subsection{Ma trận script và block config}
 
 \begin{center}
@@ -35,6 +38,22 @@ Block & \texttt{src\_jax/train.py} & \texttt{src\_jax/sample.py} & \texttt{src\_
 \end{longtable}
 \end{center}
 
+Local trainer Stage 1 mới cũng đọc YAML của repo:
+
+\begin{center}
+\begin{tabular}{>{\raggedright\arraybackslash}p{0.32\linewidth} >{\centering\arraybackslash}p{0.22\linewidth}}
+\toprule
+Block & \texttt{src/train\_stage1\_rae.py} \\
+\midrule
+\texttt{stage\_1} & yes \\
+\texttt{training} & yes \\
+\texttt{gan} & yes \\
+\texttt{data} & yes \\
+\texttt{eval} & yes \\
+\bottomrule
+\end{tabular}
+\end{center}
+
 \subsection{Block \texttt{stage\_1}}
 
 Adapter JAX không tạo schema mới cho Stage 1. Nó đọc trực tiếp:
@@ -48,6 +67,15 @@ Adapter JAX không tạo schema mới cho Stage 1. Nó đọc trực tiếp:
 
 Các giá trị này được chuyển sang encoder RAE của backend NNX để phục vụ
 reconstruction và decode latent khi sampling Stage 2.
+
+Với \texttt{src/train\_stage1\_rae.py}, block \texttt{stage\_1} còn quyết định:
+
+\begin{itemize}[leftmargin=1.5em]
+  \item \texttt{stage\_1.ckpt} có phải là checkpoint Stage 1 đầy đủ để finetune hay không;
+  \item \texttt{pretrained\_decoder\_path} có được dùng làm warm start cho decoder hay không;
+  \item DINOv2 có tiếp tục bị freeze hay được mở train thông qua
+  \texttt{training.train\_encoder}.
+\end{itemize}
 
 Nếu cần tính stat riêng cho dataset mới, có thể dùng:
 
@@ -147,6 +175,33 @@ Lưu ý:
   \texttt{train\_sitdh\_act\_enc\_00\_rms}, và
   \texttt{train\_sitdh\_act\_dec\_01\_var}.
 \end{itemize}
+
+Riêng \texttt{src/train\_stage1\_rae.py}, block \texttt{training} còn dùng thêm
+\texttt{batch\_size}, \texttt{image\_size}, \texttt{precision},
+\texttt{image\_log\_every}, \texttt{eval\_every}, \texttt{save\_every},
+\texttt{recon\_weight}, \texttt{train\_encoder}, \texttt{encoder\_lr}, và
+\texttt{num\_visuals}.
+
+\subsection{Block \texttt{gan}}
+
+Đây là block dành riêng cho local trainer \texttt{src/train\_stage1\_rae.py}.
+Nó gom:
+
+\begin{itemize}[leftmargin=1.5em]
+  \item \texttt{disc.arch.dino\_ckpt\_path}: checkpoint backbone DINO cho discriminator;
+  \item \texttt{disc.optimizer} và \texttt{disc.scheduler}: optimizer / LR schedule của discriminator;
+  \item \texttt{disc.augment}: cấu hình DiffAug;
+  \item \texttt{loss.perceptual\_weight}: trọng số LPIPS;
+  \item \texttt{loss.disc\_start} và \texttt{loss.disc\_upd\_start}: epoch gate cho adversarial updates;
+  \item \texttt{loss.max\_d\_weight}: ngưỡng clamp cho adaptive discriminator weight phía generator.
+\end{itemize}
+
+\subsection{Block \texttt{data}}
+
+Local trainer Stage 1 dùng \texttt{data.train\_path} làm root train
+\texttt{ImageFolder}; validation đi qua \texttt{eval.data\_path}. Nếu thư mục
+không có class subdirectory, trainer vẫn có thể wrap chúng thành dataset một
+lớp.
 
 \subsection{Block \texttt{source}}
 

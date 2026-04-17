@@ -126,6 +126,34 @@ python3 src_jax/reconstruct_folder.py \
 Lệnh này hữu ích khi muốn export reconstruction set trước khi build FID reference
 hoặc khi cần so sánh decoder Stage 1 giữa các checkpoint.
 
+\subsection{Huấn luyện Stage 1 trên local GPU}
+
+\begin{lstlisting}[style=rae]
+uv run python src/train_stage1_rae.py \
+  --config configs/stage1/training/DINOv2-B_decXL.yaml \
+  --train-data-path /path/to/train_imagefolder \
+  --val-data-path /path/to/val_imagefolder \
+  --results-dir results_stage1 \
+  --exp-name tunedinov2-stage1 \
+  --wandb \
+  --wandb-project TuneDinoV2
+\end{lstlisting}
+
+Entry point này dành cho local GPU hoặc Kaggle GPU, không đi qua TPU/XLA. Nó
+đọc các block \texttt{stage\_1}, \texttt{training}, \texttt{gan}, và tùy chọn
+\texttt{data}/\texttt{eval}; ghi \texttt{checkpoints/last.pt},
+\texttt{checkpoints/best.pt}, export preview PNG vào \texttt{samples/}, và log
+\texttt{L1}, \texttt{LPIPS}, GAN loss, latent RMS/variance, learning rate, grad
+norm, cùng ảnh reconstruction train/val lên wandb. Nếu
+\texttt{training.train\_encoder=true}, script sẽ mở train DINOv2 và dùng
+\texttt{training.encoder\_lr} riêng cho encoder.
+
+Repo cũng ship sẵn hai notebook Kaggle GPU bọc quanh trainer này:
+\texttt{tunedinov2-stage1-scratch-kaggle.ipynb} cho decoder-from-scratch và
+\texttt{tunedinov2-stage1-finetune-dinov2-kaggle.ipynb} cho finetune DINOv2.
+Nếu cần refresh lại cả hai notebook từ template, chạy thêm
+\texttt{python3 scripts/generate\_tunedinov2\_notebooks.py}.
+
 \subsection{Huấn luyện Stage 2 trên TPU bằng TorchXLA}
 
 \begin{lstlisting}[style=rae]

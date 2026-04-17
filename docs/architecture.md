@@ -105,6 +105,10 @@ the TPU loop.
 
 ### Training
 
+- [src/train_stage1_rae.py](../src/train_stage1_rae.py): local
+  PyTorch/CUDA Stage 1 trainer for adversarial decoder training, validation,
+  checkpointing, preview PNG export, W&B logging, and optional DINOv2 encoder
+  finetuning.
 - [src/train.py](../src/train.py): Stage 2 TPU training, EMA,
   checkpointing, wandb logging, validation loss, preview sampling, and optional
   host-side FID.
@@ -243,6 +247,7 @@ src/
     sample_utils.py
     wandb_utils.py
     fid_utils.py
+  train_stage1_rae.py
   train.py
   sample.py
   sample_ddp.py
@@ -270,6 +275,8 @@ src_jax/
   push_hf.py
 raes-jax-celeba-kaggle-tpuv5e8-sitdh-b-moe1.ipynb
 raes-jax-celeba-kaggle-tpuv5e8-sitdh-b-moe1-resume.ipynb
+tunedinov2-stage1-scratch-kaggle.ipynb
+tunedinov2-stage1-finetune-dinov2-kaggle.ipynb
 ```
 
 ## Checkpoint Compatibility

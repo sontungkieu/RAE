@@ -120,6 +120,11 @@ python3 src_jax/train.py \
   \texttt{src\_jax/build\_stage1\_stats.py} và \texttt{src\_jax/reconstruct\_folder.py}.
   Các lệnh này có thể dùng YAML chỉ có \texttt{stage\_1}, không cần
   \texttt{stage\_2.target}.
+  \item Nếu cần huấn luyện Stage 1 kiểu GAN đầy đủ trên GPU, dùng
+  \texttt{src/train\_stage1\_rae.py} hoặc hai notebook Kaggle GPU
+  \texttt{tunedinov2-stage1-scratch-kaggle.ipynb} và
+  \texttt{tunedinov2-stage1-finetune-dinov2-kaggle.ipynb}. Đường này hiện là
+  local PyTorch/CUDA, chưa có bản TPU/XLA riêng.
   \item Nếu chạy trên Kaggle với CelebA cho branch learned-source này, bắt đầu từ notebook TPU
   \texttt{raes-jax-celeba-kaggle-tpuv5e8-sitdh-b-moe1.ipynb} để giữ đúng flow clone repo, đặt
   \texttt{UV\_PROJECT\_ENVIRONMENT=/tmp/.venv} và
@@ -179,8 +184,7 @@ python3 src_jax/train.py \
   restore bằng \texttt{latest\_step()}, xóa ngay checkpoint vừa restore trong
   workdir mới sau khi state đã vào RAM, nên notebook này không còn hardcode
   \texttt{checkpoint\_100000}.
-  \item Nếu cần huấn luyện Stage 1 kiểu GAN đầy đủ, hiện vẫn phải xem đây là
-  phần chưa được JAX hóa trong branch này.
+  \item Phần huấn luyện Stage 1 kiểu GAN vẫn chưa được JAX hóa trong branch này.
 \end{itemize}
 
 \subsection{Checklist thực tế trước khi chạy dài}

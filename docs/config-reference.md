@@ -16,7 +16,9 @@ parses these top-level sections:
 
 `src/train.py` additionally reads the optional `eval` block directly from the
 full config. The JAX adapter in `src_jax/` consumes the same top-level blocks
-and translates them into the backend configuration expected by NNX.
+and translates them into the backend configuration expected by NNX. The local
+Stage 1 trainer `src/train_stage1_rae.py` additionally consumes top-level
+`gan` and `data` blocks.
 
 ## Section-to-Script Matrix
 
@@ -43,6 +45,16 @@ JAX adapter coverage:
 | `misc` | yes | yes | yes | no |
 | `training` | yes | no | no | no |
 | `eval` | yes | no | no | no |
+
+Local Stage 1 trainer coverage:
+
+| Section | `src/train_stage1_rae.py` |
+| --- | --- |
+| `stage_1` | yes |
+| `training` | yes |
+| `gan` | yes |
+| `data` | yes |
+| `eval` | yes |
 
 ## `stage_1`
 
@@ -76,6 +88,16 @@ Key fields:
 - `params.noise_tau`: latent noising strength during training
 - `params.reshape_to_2d`: whether latent tokens become `(C, H, W)`
 - `params.normalization_stat_path`: optional latent mean/variance stats
+
+For `src/train_stage1_rae.py` specifically:
+
+- `stage_1.ckpt` may point to a full Stage 1 checkpoint used for finetuning
+- `params.pretrained_decoder_path` is the decoder-only initialization path for
+  scratch or warm-start runs
+- `training.train_encoder` controls whether DINOv2 stays frozen or becomes
+  trainable
+- `training.encoder_lr` lets the encoder use a smaller learning rate than the
+  decoder
 
 On the JAX path, dataset-specific stats are typically built with:
 
@@ -366,6 +388,85 @@ python3 src_jax/train.py \
   --set training.log_activation_stats=true \
   --set guidance.scale=1.5
 ```
+
+For `src/train_stage1_rae.py`, the same `training` block additionally uses:
+
+- `batch_size`: per-step batch size on the local GPU
+- `image_size`: decode target size before reconstruction losses
+- `precision`: one of `fp32`, `fp16`, or `bf16`
+- `image_log_every`: cadence for writing preview PNGs and W&B image panels
+- `eval_every`: epoch cadence for validation
+- `save_every`: epoch cadence for checkpoint writes
+- `recon_weight`: scalar weight on the pixel-space L1 loss
+- `train_encoder`: whether the DINOv2 encoder is trainable
+- `encoder_lr`: encoder learning rate when `train_encoder=true`
+- `num_visuals`: number of images shown in preview grids
+
+## `gan`
+
+Typical shape for `src/train_stage1_rae.py`:
+
+```yaml
+gan:
+  disc:
+    arch:
+      dino_ckpt_path: models/discs/dino_vit_small_patch8_224.pth
+      ks: 9
+      norm_type: bn
+      using_spec_norm: true
+      recipe: S_8
+    optimizer:
+      lr: 2.0e-4
+      betas: [0.5, 0.9]
+      weight_decay: 0.0
+    scheduler:
+      type: cosine
+      warmup_epochs: 1
+      decay_end_epoch: 20
+      base_lr: 2.0e-4
+      final_lr: 2.0e-5
+    augment:
+      prob: 1.0
+      cutout: 0.0
+  loss:
+    disc_loss: hinge
+    gen_loss: vanilla
+    disc_weight: 0.75
+    perceptual_weight: 1.0
+    disc_start: 1
+    disc_upd_start: 1
+    lpips_start: 0
+    max_d_weight: 10000.0
+    disc_updates: 1
+```
+
+Meaning:
+
+- `disc.arch.dino_ckpt_path`: frozen DINO discriminator backbone checkpoint
+- `disc.optimizer` / `disc.scheduler`: optimizer and LR schedule for the
+  discriminator heads
+- `disc.augment`: DiffAug probability and cutout strength
+- `loss.disc_loss`: `hinge` or `vanilla`
+- `loss.gen_loss`: currently `vanilla`
+- `loss.perceptual_weight`: LPIPS weight
+- `loss.disc_start` / `loss.disc_upd_start`: epoch gates for generator-side and
+  discriminator-side adversarial updates
+- `loss.max_d_weight`: clamp for the adaptive discriminator weight used on the
+  generator update
+- `loss.disc_updates`: discriminator steps per generator step
+
+## `data`
+
+Typical shape for the local Stage 1 trainer:
+
+```yaml
+data:
+  train_path: /path/to/train_imagefolder
+```
+
+Optional validation stays under `eval.data_path`. Both paths should point at an
+`ImageFolder` root or a flat directory of images that the local trainer can
+wrap into a single-class dataset automatically.
 
 ## `eval`
 
