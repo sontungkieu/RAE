@@ -45,14 +45,16 @@ def notebook_metadata() -> dict:
     }
 
 
-def _asset_download_cell(include_decoder: bool) -> str:
-    decoder_line = ""
+def _asset_download_cell(*, include_decoder: bool, robust_uv: bool) -> str:
+    uv_init = 'import os\nimport subprocess\n\nUV_BIN = os.environ["UV_BIN"]\n' if robust_uv else 'import subprocess\n\nUV_BIN = "uv"\n'
+    decoder_block = ""
     if include_decoder:
-        decoder_line = textwrap.dedent(
+        decoder_block = textwrap.dedent(
             """
+
             subprocess.run(
                 [
-                    "uv",
+                    UV_BIN,
                     "run",
                     "hf",
                     "download",
@@ -67,12 +69,12 @@ def _asset_download_cell(include_decoder: bool) -> str:
             """
         ).rstrip()
     return textwrap.dedent(
-        f"""
-        import subprocess
+        """
+        __UV_INIT__
 
         subprocess.run(
             [
-                "uv",
+                UV_BIN,
                 "run",
                 "hf",
                 "download",
@@ -83,21 +85,23 @@ def _asset_download_cell(include_decoder: bool) -> str:
             ],
             check=True,
             cwd=repo_root,
-        )
-        {decoder_line}
+        )__DECODER_BLOCK__
 
         print("Model assets are ready under", repo_root / "models")
         """
-    ).strip()
+    ).replace("__UV_INIT__", uv_init).replace("__DECODER_BLOCK__", decoder_block).strip()
 
 
-def _dataset_prep_cell() -> str:
+def _dataset_prep_cell(*, robust_uv: bool) -> str:
+    uv_init = 'UV_BIN = os.environ["UV_BIN"]\n\n' if robust_uv else 'UV_BIN = "uv"\n\n'
     return textwrap.dedent(
         """
         import csv
+        import os
         import subprocess
         from PIL import Image
 
+        __UV_INIT__
 
         def center_crop_resize_256(src_path: Path, dst_path: Path) -> None:
             with Image.open(src_path) as image:
@@ -116,7 +120,7 @@ def _dataset_prep_cell() -> str:
             if not face_root.exists():
                 subprocess.run(
                     [
-                        "uv",
+                        UV_BIN,
                         "run",
                         "python",
                         "src_jax/export_celebahq_hf.py",
@@ -159,7 +163,7 @@ def _dataset_prep_cell() -> str:
         print("train images:", sum(1 for _ in train_root.rglob('*.jpg')) + sum(1 for _ in train_root.rglob('*.png')))
         print("val images:", sum(1 for _ in val_root.rglob('*.jpg')) + sum(1 for _ in val_root.rglob('*.png')))
         """
-    ).strip()
+    ).replace("__UV_INIT__", uv_init).strip()
 
 
 def _config_cell(*, mode: str) -> str:
@@ -320,19 +324,21 @@ def _config_cell(*, mode: str) -> str:
     return textwrap.dedent(base).strip()
 
 
-def _train_cell() -> str:
+def _train_cell(*, robust_uv: bool) -> str:
+    uv_init = 'UV_BIN = os.environ["UV_BIN"]\n' if robust_uv else 'UV_BIN = "uv"\n'
     return textwrap.dedent(
         """
         import json
         import os
         import subprocess
 
+        __UV_INIT__
         env = os.environ.copy()
         env["WANDB_ENTITY"] = WANDB_ENTITY
         env["PROJECT"] = PROJECT
 
         cmd = [
-            "uv",
+            UV_BIN,
             "run",
             "python",
             "src/train_stage1_rae.py",
@@ -363,6 +369,85 @@ def _train_cell() -> str:
         print("Saved run summary to", summary_path)
         print(json.dumps(run_info, indent=2))
         """
+    ).replace("__UV_INIT__", uv_init).strip()
+
+
+def _bootstrap_cell(*, robust_uv: bool) -> str:
+    if not robust_uv:
+        return textwrap.dedent(
+            f"""
+            %cd /kaggle/working
+            !rm -rf RAE
+            !git clone {REPO_URL}
+            %cd /kaggle/working/RAE
+            !curl -LsSf https://astral.sh/uv/install.sh | sh
+            !ln -sf /root/.local/bin/uv /usr/local/bin/uv
+            """
+        ).strip()
+
+    return textwrap.dedent(
+        f"""
+        %cd /kaggle/working
+        !rm -rf RAE
+        !git clone {REPO_URL}
+        %cd /kaggle/working/RAE
+
+        import os
+        import shutil
+        import subprocess
+        from pathlib import Path
+
+        subprocess.run(["bash", "-lc", "curl -LsSf https://astral.sh/uv/install.sh | sh"], check=True)
+
+        uv_bin = shutil.which("uv")
+        if uv_bin is None:
+            for candidate in (
+                Path.home() / ".local/bin/uv",
+                Path("/root/.local/bin/uv"),
+                Path("/usr/local/bin/uv"),
+            ):
+                if candidate.exists():
+                    uv_bin = candidate.as_posix()
+                    break
+
+        if uv_bin is None:
+            raise FileNotFoundError("uv install finished but the uv binary is still missing from PATH and ~/.local/bin")
+
+        os.environ["UV_BIN"] = uv_bin
+        os.environ["PATH"] = f"{{Path(uv_bin).parent}}:{{os.environ.get('PATH', '')}}"
+        print("Using uv binary:", uv_bin)
+        """
+    ).strip()
+
+
+def _sync_cell(*, robust_uv: bool) -> str:
+    if not robust_uv:
+        return textwrap.dedent(
+            """
+            import os
+
+            os.environ["UV_PROJECT_ENVIRONMENT"] = "/tmp/.venv"
+            os.environ["UV_CACHE_DIR"] = "/tmp/uv-cache"
+
+            !uv sync -q
+            !nvidia-smi
+            print("Repo dependencies are synced into /tmp/.venv")
+            """
+        ).strip()
+
+    return textwrap.dedent(
+        """
+        import os
+        import subprocess
+
+        os.environ["UV_PROJECT_ENVIRONMENT"] = "/tmp/.venv"
+        os.environ["UV_CACHE_DIR"] = "/tmp/uv-cache"
+
+        uv_bin = os.environ["UV_BIN"]
+        subprocess.run([uv_bin, "sync", "-q"], check=True, cwd="/kaggle/working/RAE")
+        subprocess.run(["nvidia-smi"], check=False)
+        print("Repo dependencies are synced into /tmp/.venv")
+        """
     ).strip()
 
 
@@ -391,6 +476,7 @@ def _post_train_cell() -> str:
 
 def build_notebook(*, mode: str) -> dict:
     include_decoder = mode != "scratch"
+    robust_uv = mode == "finetune"
     if mode == "scratch":
         title = "# TuneDinoV2 Stage 1 Kaggle Notebook (From Scratch)"
         description = """
@@ -418,32 +504,8 @@ Notebook hỗ trợ cả `CelebA` và `CelebA-HQ` bằng biến `dataset_name` �
 
     cells = [
         md_cell(f"{title}\n\n{textwrap.dedent(description).strip()}"),
-        code_cell(
-            textwrap.dedent(
-                f"""
-                %cd /kaggle/working
-                !rm -rf RAE
-                !git clone {REPO_URL}
-                %cd /kaggle/working/RAE
-                !curl -LsSf https://astral.sh/uv/install.sh | sh
-                !ln -sf /root/.local/bin/uv /usr/local/bin/uv
-                """
-            ).strip()
-        ),
-        code_cell(
-            textwrap.dedent(
-                """
-                import os
-
-                os.environ["UV_PROJECT_ENVIRONMENT"] = "/tmp/.venv"
-                os.environ["UV_CACHE_DIR"] = "/tmp/uv-cache"
-
-                !uv sync -q
-                !nvidia-smi
-                print("Repo dependencies are synced into /tmp/.venv")
-                """
-            ).strip()
-        ),
+        code_cell(_bootstrap_cell(robust_uv=robust_uv)),
+        code_cell(_sync_cell(robust_uv=robust_uv)),
         code_cell(
             textwrap.dedent(
                 """
@@ -484,9 +546,9 @@ Notebook hỗ trợ cả `CelebA` và `CelebA-HQ` bằng biến `dataset_name` �
             ).strip()
         ),
         code_cell(_config_cell(mode=mode)),
-        code_cell(_asset_download_cell(include_decoder=include_decoder)),
-        code_cell(_dataset_prep_cell()),
-        code_cell(_train_cell()),
+        code_cell(_asset_download_cell(include_decoder=include_decoder, robust_uv=robust_uv)),
+        code_cell(_dataset_prep_cell(robust_uv=robust_uv)),
+        code_cell(_train_cell(robust_uv=robust_uv)),
         code_cell(_post_train_cell()),
     ]
     return {

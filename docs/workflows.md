@@ -472,7 +472,9 @@ For Kaggle GPU runs, the shipped notebooks
 and
 [../tunedinov2-stage1-finetune-dinov2-kaggle.ipynb](../tunedinov2-stage1-finetune-dinov2-kaggle.ipynb)
 wrap this same trainer with face-dataset preparation and default W&B project
-`TuneDinoV2`. If you need to refresh both notebooks after editing the template,
+`TuneDinoV2`. The finetune-DINO notebook additionally resolves the installed
+`uv` binary from `~/.local/bin` when Kaggle GPU sessions leave `uv` out of
+`PATH`. If you need to refresh both notebooks after editing the template,
 run `python3 scripts/generate_tunedinov2_notebooks.py`.
 
 ### Stage 1 Latent Stats on the JAX Path
