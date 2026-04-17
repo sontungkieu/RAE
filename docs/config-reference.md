@@ -553,6 +553,8 @@ For `src/train_stage1_rae.py`, only the shared subset is used:
 
 The local Stage 1 trainer runs this FID on validation reconstructions from rank
 0 only and logs `val/fid`, `val/fid_num_samples`, and `val/fid_duration_sec`.
+Optional Stage 1 eval keys such as `max_batches` and `fid_num_threads` may be
+left unset or written as `null`.
 
 ## Example Stage 2 Training Config Skeleton
 

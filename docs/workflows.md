@@ -469,6 +469,8 @@ Key behavior:
   `training.grad_accum_steps` as additional batch scaling
 - can run reconstruction FID from validation reconstructions when `eval.fid_ref`
   is configured
+- accepts `null` / unset values for optional eval knobs such as
+  `eval.max_batches` and `eval.fid_num_threads`
 - supports either a frozen encoder or a trainable DINOv2 encoder through
   `training.train_encoder` and `training.encoder_lr`
 
@@ -490,10 +492,10 @@ For Kaggle GPU runs, the shipped notebooks
 and
 [../tunedinov2-stage1-finetune-dinov2-kaggle.ipynb](../tunedinov2-stage1-finetune-dinov2-kaggle.ipynb)
 wrap this same trainer with face-dataset preparation and default W&B project
-`TuneDinoV2`. Both notebooks now resolve the installed `uv` binary from
-`PATH`, `~/.local/bin`, or `/usr/local/bin`, and they switch from `uv run
-python` to `uv run torchrun --standalone --nproc_per_node=<visible_gpus>` when
-Kaggle exposes more than one GPU. If you need to refresh both notebooks after editing the template,
+`TuneDinoV2`. Both notebooks now bootstrap `uv` through `curl ... | sh`,
+prepend `~/.local/bin` to `PATH`, default `grad_accum_steps` to `8`, and switch
+from `uv run python` to `uv run torchrun --standalone
+--nproc_per_node=<visible_gpus>` when Kaggle exposes more than one GPU. If you need to refresh both notebooks after editing the template,
 run `python3 scripts/generate_tunedinov2_notebooks.py`.
 
 ### Stage 1 Latent Stats on the JAX Path

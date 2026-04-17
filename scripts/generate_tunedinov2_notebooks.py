@@ -46,7 +46,7 @@ def notebook_metadata() -> dict:
 
 
 def _asset_download_cell(*, include_decoder: bool, robust_uv: bool) -> str:
-    uv_init = 'import os\nimport subprocess\n\nUV_BIN = os.environ["UV_BIN"]\n' if robust_uv else 'import subprocess\n\nUV_BIN = "uv"\n'
+    uv_init = 'import subprocess\n'
     decoder_block = ""
     if include_decoder:
         decoder_block = textwrap.dedent(
@@ -54,7 +54,7 @@ def _asset_download_cell(*, include_decoder: bool, robust_uv: bool) -> str:
 
             subprocess.run(
                 [
-                    UV_BIN,
+                    "uv",
                     "run",
                     "hf",
                     "download",
@@ -74,7 +74,7 @@ def _asset_download_cell(*, include_decoder: bool, robust_uv: bool) -> str:
 
         subprocess.run(
             [
-                UV_BIN,
+                "uv",
                 "run",
                 "hf",
                 "download",
@@ -93,7 +93,7 @@ def _asset_download_cell(*, include_decoder: bool, robust_uv: bool) -> str:
 
 
 def _dataset_prep_cell(*, robust_uv: bool) -> str:
-    uv_init = 'UV_BIN = os.environ["UV_BIN"]\n\n' if robust_uv else 'UV_BIN = "uv"\n\n'
+    uv_init = ""
     return textwrap.dedent(
         """
         import csv
@@ -120,7 +120,7 @@ def _dataset_prep_cell(*, robust_uv: bool) -> str:
             if not face_root.exists():
                 subprocess.run(
                     [
-                        UV_BIN,
+                        "uv",
                         "run",
                         "python",
                         "src_jax/export_celebahq_hf.py",
@@ -216,7 +216,7 @@ def _config_cell(*, mode: str) -> str:
     wandb_group = "{group}"
     wandb_tags = "{tags}"
     stage1_ckpt_path = None  # set to an existing Stage 1 checkpoint to continue from your best run
-    grad_accum_steps = 1      # accumulation on top of the per-GPU micro batch
+    grad_accum_steps = 8      # accumulation on top of the per-GPU micro batch
     fid_ref_path = None       # optional reconstruction FID reference stats (.npz or .pkl)
     fid_every = 1             # epoch cadence when fid_ref_path is set
     fid_batch_size = 64
@@ -226,6 +226,7 @@ def _config_cell(*, mode: str) -> str:
     stage1_ckpt_yaml = "null" if stage1_ckpt_path is None else f"'{{stage1_ckpt_path}}'"
     fid_ref_yaml = "null" if fid_ref_path is None else f"'{{fid_ref_path}}'"
     fid_device_yaml = f"'{{fid_device}}'"
+    fid_num_threads_yaml = "null" if fid_num_threads is None else str(fid_num_threads)
     config_text = textwrap.dedent(
         f\"\"\"
         stage_1:
@@ -316,7 +317,7 @@ def _config_cell(*, mode: str) -> str:
           fid_every: {{fid_every}}
           fid_batch_size: {{fid_batch_size}}
           fid_device: {{fid_device_yaml}}
-          fid_num_threads: {{fid_num_threads}}
+          fid_num_threads: {{fid_num_threads_yaml}}
         \"\"\"
     ).strip() + "\\n"
     config_path.write_text(config_text, encoding="utf-8")
@@ -339,7 +340,7 @@ def _config_cell(*, mode: str) -> str:
 
 
 def _train_cell(*, robust_uv: bool) -> str:
-    uv_init = 'UV_BIN = os.environ["UV_BIN"]\n' if robust_uv else 'UV_BIN = "uv"\n'
+    uv_init = ""
     return textwrap.dedent(
         """
         import json
@@ -355,7 +356,7 @@ def _train_cell(*, robust_uv: bool) -> str:
         env.setdefault("OMP_NUM_THREADS", "1")
 
         visible_gpus = torch.cuda.device_count()
-        launcher = [UV_BIN, "run"]
+        launcher = ["uv", "run"]
         if visible_gpus > 1:
             launcher.extend(
                 [
@@ -410,29 +411,13 @@ def _bootstrap_cell(*, robust_uv: bool) -> str:
         %cd /kaggle/working/RAE
 
         import os
-        import shutil
         import subprocess
         from pathlib import Path
 
         subprocess.run(["bash", "-lc", "curl -LsSf https://astral.sh/uv/install.sh | sh"], check=True)
-
-        uv_bin = shutil.which("uv")
-        if uv_bin is None:
-            for candidate in (
-                Path.home() / ".local/bin/uv",
-                Path("/root/.local/bin/uv"),
-                Path("/usr/local/bin/uv"),
-            ):
-                if candidate.exists():
-                    uv_bin = candidate.as_posix()
-                    break
-
-        if uv_bin is None:
-            raise FileNotFoundError("uv install finished but the uv binary is still missing from PATH and ~/.local/bin")
-
-        os.environ["UV_BIN"] = uv_bin
-        os.environ["PATH"] = f"{{Path(uv_bin).parent}}:{{os.environ.get('PATH', '')}}"
-        print("Using uv binary:", uv_bin)
+        os.environ["PATH"] = f"{{Path.home() / '.local/bin'}}:{{os.environ.get('PATH', '')}}"
+        subprocess.run(["bash", "-lc", "uv --version"], check=True)
+        print("Using uv from PATH:", os.environ["PATH"].split(":")[0])
         """
     ).strip()
 
@@ -445,9 +430,7 @@ def _sync_cell(*, robust_uv: bool) -> str:
 
         os.environ["UV_PROJECT_ENVIRONMENT"] = "/tmp/.venv"
         os.environ["UV_CACHE_DIR"] = "/tmp/uv-cache"
-
-        uv_bin = os.environ["UV_BIN"]
-        subprocess.run([uv_bin, "sync", "-q"], check=True, cwd="/kaggle/working/RAE")
+        subprocess.run(["uv", "sync", "-q"], check=True, cwd="/kaggle/working/RAE")
         subprocess.run(["nvidia-smi"], check=False)
         print("Repo dependencies are synced into /tmp/.venv")
         """

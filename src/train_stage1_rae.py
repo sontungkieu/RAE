@@ -125,12 +125,18 @@ def setup_distributed() -> DistState:
 
 def barrier_if_needed(dist_state: DistState) -> None:
     if dist_state.enabled:
-        dist.barrier()
+        if dist_state.device.type == "cuda":
+            dist.barrier(device_ids=[dist_state.local_rank])
+        else:
+            dist.barrier()
 
 
 def cleanup_distributed(dist_state: DistState) -> None:
     if dist_state.enabled and dist.is_initialized():
-        dist.barrier()
+        if dist_state.device.type == "cuda":
+            dist.barrier(device_ids=[dist_state.local_rank])
+        else:
+            dist.barrier()
         dist.destroy_process_group()
 
 
@@ -176,6 +182,14 @@ def resolve_repo_path(config_path: Path, value: Any) -> str | None:
     if config_candidate.exists():
         return config_candidate.as_posix()
     return str(value)
+
+
+def parse_optional_int(value: Any) -> int | None:
+    if value is None:
+        return None
+    if isinstance(value, str) and value.strip().lower() in {"", "none", "null"}:
+        return None
+    return int(value)
 
 
 def load_config(config_path: str, set_values: list[str]) -> tuple[DictConfig, Path]:
@@ -663,8 +677,7 @@ def main() -> None:
         image_log_every = int(training_cfg.get("image_log_every", 200))
         eval_every = int(training_cfg.get("eval_every", 1))
         save_every = int(training_cfg.get("save_every", 1))
-        eval_max_batches_raw = eval_cfg.get("max_batches")
-        eval_max_batches = int(eval_max_batches_raw) if eval_max_batches_raw is not None else None
+        eval_max_batches = parse_optional_int(eval_cfg.get("max_batches"))
         clip_grad = float(training_cfg.get("clip_grad", 1.0))
         recon_weight = float(training_cfg.get("recon_weight", 1.0))
         perceptual_weight = float(gan_cfg.get("loss", {}).get("perceptual_weight", 1.0))
@@ -683,8 +696,7 @@ def main() -> None:
         fid_every = int(eval_cfg.get("fid_every", eval_every))
         fid_batch_size = int(eval_cfg.get("fid_batch_size", 64))
         fid_device = str(eval_cfg.get("fid_device", "auto"))
-        raw_fid_num_threads = eval_cfg.get("fid_num_threads")
-        fid_num_threads = int(raw_fid_num_threads) if raw_fid_num_threads is not None else None
+        fid_num_threads = parse_optional_int(eval_cfg.get("fid_num_threads"))
         if fid_enabled and val_loader is None:
             raise ValueError("eval.fid_ref requires validation data via eval.data_path or data.val_path.")
 

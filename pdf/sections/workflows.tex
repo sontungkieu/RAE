@@ -165,10 +165,11 @@ uv run torchrun --standalone --nproc_per_node=2 src/train_stage1_rae.py \
 Repo cũng ship sẵn hai notebook Kaggle GPU bọc quanh trainer này:
 \texttt{tunedinov2-stage1-scratch-kaggle.ipynb} cho decoder-from-scratch và
 \texttt{tunedinov2-stage1-finetune-dinov2-kaggle.ipynb} cho finetune DINOv2.
-Hai notebook này giờ đều tự dò binary \texttt{uv} từ \texttt{PATH},
-\texttt{\~/.local/bin}, hoặc \texttt{/usr/local/bin}; nếu session Kaggle lộ ra
-nhiều GPU thì chúng tự chuyển từ \texttt{uv run python} sang
-\texttt{uv run torchrun}. Nếu cần refresh lại cả hai notebook từ template, chạy thêm
+Hai notebook này giờ đều bootstrap \texttt{uv} qua \texttt{curl ... | sh}, thêm
+\texttt{\~/.local/bin} vào \texttt{PATH}, mặc định
+\texttt{grad\_accum\_steps=8}; nếu session Kaggle lộ ra nhiều GPU thì chúng tự chuyển từ \texttt{uv run python} sang
+\texttt{uv run torchrun}. Các key tùy chọn của phần eval như
+\texttt{fid\_num\_threads} có thể để \texttt{null}. Nếu cần refresh lại cả hai notebook từ template, chạy thêm
 \texttt{python3 scripts/generate\_tunedinov2\_notebooks.py}.
 
 \subsection{Huấn luyện Stage 2 trên TPU bằng TorchXLA}

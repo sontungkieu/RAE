@@ -38,8 +38,8 @@ Use the docs folder as the detailed guide for this branch:
 - [raes-jax-celebahq-kaggle-tpuv5e8-sitdh-b-moe1.ipynb](raes-jax-celebahq-kaggle-tpuv5e8-sitdh-b-moe1.ipynb): CelebA-HQ TPU `v5e-8` notebook for the `SiTDH-B + moe1` recipe, now also building an explicit `pyramid_16k` source artifact as `celebahq256_source_gmm_pyr16k.npz`
 - [raes-jax-celebahq-kaggle-tpuv5e8-sitdh-b-moe1-resume.ipynb](raes-jax-celebahq-kaggle-tpuv5e8-sitdh-b-moe1-resume.ipynb): resume-only CelebA-HQ TPU notebook for the `SiTDH-B + moe1` runs, cloning the newest checkpoint into a fresh timestamped resume workdir with a fresh `wandb_run.json` while requiring the persisted `celebahq256_source_gmm_pyr16k.npz` artifact
 - [download-dinov2-with-registers-base-kaggle.ipynb](download-dinov2-with-registers-base-kaggle.ipynb): utility notebook that snapshots `facebook/dinov2-with-registers-base` into `/kaggle/working/pretrained`, verifies it with `local_files_only=True`, and prints the exact local config snippet to paste into `sitdh` configs
-- [tunedinov2-stage1-scratch-kaggle.ipynb](tunedinov2-stage1-scratch-kaggle.ipynb): Kaggle GPU notebook that prepares a CelebA or CelebA-HQ `ImageFolder`, writes a Stage 1 config, auto-resolves the installed `uv` binary, launches `torchrun` when Kaggle exposes multiple GPUs, and trains the ViT decoder from scratch with optional reconstruction FID logging to W&B project `TuneDinoV2`
-- [tunedinov2-stage1-finetune-dinov2-kaggle.ipynb](tunedinov2-stage1-finetune-dinov2-kaggle.ipynb): Kaggle GPU notebook that initializes from the ImageNet DINOv2 decoder or an existing Stage 1 checkpoint, unfreezes the DINOv2 encoder, auto-resolves the installed `uv` binary when Kaggle does not inject it into `PATH`, launches `torchrun` on multi-GPU sessions, and logs finetuning plus optional reconstruction FID to W&B project `TuneDinoV2`
+- [tunedinov2-stage1-scratch-kaggle.ipynb](tunedinov2-stage1-scratch-kaggle.ipynb): Kaggle GPU notebook that prepares a CelebA or CelebA-HQ `ImageFolder`, writes a Stage 1 config, bootstraps `uv` with `curl ... | sh`, prepends `~/.local/bin` to `PATH`, launches `torchrun` when Kaggle exposes multiple GPUs, defaults `grad_accum_steps` to `8`, and trains the ViT decoder from scratch with optional reconstruction FID logging to W&B project `TuneDinoV2`
+- [tunedinov2-stage1-finetune-dinov2-kaggle.ipynb](tunedinov2-stage1-finetune-dinov2-kaggle.ipynb): Kaggle GPU notebook that initializes from the ImageNet DINOv2 decoder or an existing Stage 1 checkpoint, unfreezes the DINOv2 encoder, bootstraps `uv` with `curl ... | sh`, prepends `~/.local/bin` to `PATH`, launches `torchrun` on multi-GPU sessions, defaults `grad_accum_steps` to `8`, and logs finetuning plus optional reconstruction FID to W&B project `TuneDinoV2`
 
 The shipped hand-maintained Kaggle notebooks on this branch now only bootstrap
 the `WANDB2` secret for W&B authentication, while generated ablation notebooks
@@ -224,6 +224,8 @@ uv run torchrun --standalone --nproc_per_node=2 src/train_stage1_rae.py \
 `training.batch_size` is the per-process micro-batch. The trainer now also
 supports `training.grad_accum_steps` for a larger effective batch size and
 `eval.fid_ref` for optional reconstruction FID on the validation reconstructions.
+Optional eval keys such as `eval.max_batches` and `eval.fid_num_threads` may be
+left unset or written as `null`.
 
 ### Sampling/Reconstruction
 
