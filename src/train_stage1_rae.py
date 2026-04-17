@@ -11,22 +11,26 @@ import math
 import os
 from pathlib import Path
 import random
-from typing import Any, Iterable, Iterator
+from typing import Any
 
 import numpy as np
 from omegaconf import DictConfig, OmegaConf
 from PIL import Image
 import torch
+import torch.distributed as dist
 from torch import nn
-from torch.cuda.amp import GradScaler
+from torch.amp import GradScaler
+from torch.nn.parallel import DistributedDataParallel as DDP
 from torch.nn.utils import clip_grad_norm_
 from torch.utils.data import DataLoader
+from torch.utils.data.distributed import DistributedSampler
 from torchvision import transforms
 from torchvision.datasets import ImageFolder
 from torchvision.utils import make_grid
 import wandb
 
 from disc import LPIPS, build_discriminator, hinge_d_loss, vanilla_d_loss, vanilla_g_loss
+from utils.fid_utils import compute_fid_with_metadata, write_fid_result
 from utils.model_utils import instantiate_from_config
 from utils.optim_utils import build_scheduler
 
@@ -39,6 +43,16 @@ class RunState:
     epoch: int = 0
     global_step: int = 0
     best_val_lpips: float | None = None
+
+
+@dataclass
+class DistState:
+    enabled: bool
+    rank: int
+    local_rank: int
+    world_size: int
+    device: torch.device
+    is_master: bool
 
 
 class ImageFileDataset(torch.utils.data.Dataset[tuple[torch.Tensor, int]]):
@@ -82,11 +96,71 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
-def seed_everything(seed: int) -> None:
-    random.seed(seed)
-    np.random.seed(seed)
-    torch.manual_seed(seed)
-    torch.cuda.manual_seed_all(seed)
+def setup_distributed() -> DistState:
+    world_size = int(os.environ.get("WORLD_SIZE", "1"))
+    rank = int(os.environ.get("RANK", "0"))
+    local_rank = int(os.environ.get("LOCAL_RANK", "0"))
+    use_cuda = torch.cuda.is_available()
+
+    if world_size > 1 and not dist.is_initialized():
+        backend = "nccl" if use_cuda else "gloo"
+        if use_cuda:
+            torch.cuda.set_device(local_rank)
+        dist.init_process_group(backend=backend)
+
+    if use_cuda:
+        device = torch.device("cuda", local_rank if world_size > 1 else 0)
+    else:
+        device = torch.device("cpu")
+
+    return DistState(
+        enabled=world_size > 1,
+        rank=rank,
+        local_rank=local_rank,
+        world_size=world_size,
+        device=device,
+        is_master=rank == 0,
+    )
+
+
+def barrier_if_needed(dist_state: DistState) -> None:
+    if dist_state.enabled:
+        dist.barrier()
+
+
+def cleanup_distributed(dist_state: DistState) -> None:
+    if dist_state.enabled and dist.is_initialized():
+        dist.barrier()
+        dist.destroy_process_group()
+
+
+def unwrap_module(module: nn.Module) -> nn.Module:
+    return module.module if isinstance(module, DDP) else module
+
+
+def distributed_mean_dict(metrics: dict[str, float], *, device: torch.device, enabled: bool, world_size: int) -> dict[str, float]:
+    if not enabled or not metrics:
+        return metrics
+    keys = sorted(metrics.keys())
+    payload = torch.tensor([float(metrics[key]) for key in keys], device=device, dtype=torch.float64)
+    dist.all_reduce(payload, op=dist.ReduceOp.SUM)
+    payload /= world_size
+    return {key: float(value) for key, value in zip(keys, payload.tolist())}
+
+
+def sync_context(module: nn.Module, should_sync: bool):
+    if should_sync or not isinstance(module, DDP):
+        return nullcontext()
+    return module.no_sync()
+
+
+def seed_everything(seed: int, *, rank: int = 0) -> None:
+    final_seed = seed + rank
+    random.seed(final_seed)
+    np.random.seed(final_seed)
+    torch.manual_seed(final_seed)
+    if torch.cuda.is_available():
+        torch.cuda.manual_seed_all(final_seed)
 
 
 def resolve_repo_path(config_path: Path, value: Any) -> str | None:
@@ -191,18 +265,24 @@ def recent_mean(history: deque[float]) -> float:
     return float(sum(history) / len(history)) if history else 0.0
 
 
+def extract_images(batch: Any) -> torch.Tensor:
+    if isinstance(batch, (tuple, list)):
+        return batch[0]
+    return batch
+
+
 def select_precision(training_cfg: dict[str, Any], device: torch.device) -> tuple[str, Any, GradScaler, GradScaler]:
     precision = str(training_cfg.get("precision", "fp32")).lower()
     if device.type != "cuda":
-        return "fp32", nullcontext, GradScaler(enabled=False), GradScaler(enabled=False)
+        return "fp32", nullcontext, GradScaler("cpu", enabled=False), GradScaler("cpu", enabled=False)
 
     if precision == "fp16":
         autocast_ctx = lambda: torch.autocast(device_type="cuda", dtype=torch.float16)
-        return precision, autocast_ctx, GradScaler(enabled=True), GradScaler(enabled=True)
+        return precision, autocast_ctx, GradScaler("cuda", enabled=True), GradScaler("cuda", enabled=True)
     if precision == "bf16":
         autocast_ctx = lambda: torch.autocast(device_type="cuda", dtype=torch.bfloat16)
-        return precision, autocast_ctx, GradScaler(enabled=False), GradScaler(enabled=False)
-    return "fp32", nullcontext, GradScaler(enabled=False), GradScaler(enabled=False)
+        return precision, autocast_ctx, GradScaler("cuda", enabled=False), GradScaler("cuda", enabled=False)
+    return "fp32", nullcontext, GradScaler("cuda", enabled=False), GradScaler("cuda", enabled=False)
 
 
 def calculate_adaptive_weight(
@@ -374,6 +454,7 @@ def evaluate(
     device: torch.device,
     max_batches: int | None,
     image_log_count: int,
+    autocast_ctx: Any,
 ) -> tuple[dict[str, float], np.ndarray | None]:
     rae.eval()
     losses_l1: list[float] = []
@@ -383,12 +464,13 @@ def evaluate(
     latent_var: list[float] = []
     preview: np.ndarray | None = None
 
-    for batch_idx, (images, _) in enumerate(loader):
+    for batch_idx, batch in enumerate(loader):
         if max_batches is not None and batch_idx >= max_batches:
             break
-        images = images.to(device, non_blocking=True)
-        latents = rae.encode(images)
-        recon = rae.decode(latents).clamp(0, 1)
+        images = extract_images(batch).to(device, non_blocking=True)
+        with autocast_ctx():
+            latents, recon = rae(images, return_latents=True)
+        recon = recon.clamp(0, 1)
         real_pm1 = images * 2 - 1
         recon_pm1 = recon * 2 - 1
         losses_l1.append(float(torch.mean(torch.abs(recon - images)).item()))
@@ -408,411 +490,663 @@ def evaluate(
     }, preview
 
 
+@torch.no_grad()
+def run_reconstruction_fid(
+    *,
+    rae: nn.Module,
+    loader: DataLoader,
+    device: torch.device,
+    max_batches: int | None,
+    autocast_ctx: Any,
+    fid_ref: str,
+    fid_batch_size: int,
+    fid_device: str,
+    fid_num_threads: int | None,
+    workdir: Path,
+    global_step: int,
+) -> dict[str, float]:
+    rae.eval()
+    fid_dir = workdir / "fid_eval" / f"step_{global_step:07d}"
+    fid_dir.mkdir(parents=True, exist_ok=True)
+    shard_paths: list[Path] = []
+
+    for batch_idx, batch in enumerate(loader):
+        if max_batches is not None and batch_idx >= max_batches:
+            break
+        images = extract_images(batch).to(device, non_blocking=True)
+        with autocast_ctx():
+            _, recon = rae(images, return_latents=True)
+        recon = recon.clamp(0, 1)
+        arr = recon.mul(255).round().clamp(0, 255).permute(0, 2, 3, 1).to(torch.uint8).cpu().numpy()
+        shard_path = fid_dir / f"recon_batch_{batch_idx:05d}.npz"
+        np.savez(shard_path, arr_0=arr)
+        shard_paths.append(shard_path)
+
+    if not shard_paths:
+        raise RuntimeError("FID evaluation did not produce any reconstructed samples.")
+
+    fid_value, actual_num_samples = compute_fid_with_metadata(
+        shard_paths,
+        reference_path=fid_ref,
+        batch_size=fid_batch_size,
+        device=fid_device,
+        num_threads=fid_num_threads,
+    )
+    write_fid_result(
+        fid_dir / "reconstruction.fid.json",
+        fid=fid_value,
+        sample_path=fid_dir,
+        reference_path=fid_ref,
+        batch_size=fid_batch_size,
+        device=fid_device,
+        num_samples=actual_num_samples,
+        num_threads=fid_num_threads,
+    )
+    for shard_path in shard_paths:
+        if shard_path.exists():
+            shard_path.unlink()
+    return {
+        "val/fid": float(fid_value),
+        "val/fid_num_samples": float(actual_num_samples),
+    }
+
+
 def main() -> None:
     args = parse_args()
-    full_cfg, config_path = load_config(args.config, args.set_values)
-    cfg_dict = OmegaConf.to_container(full_cfg, resolve=True)
-    if not isinstance(cfg_dict, dict):
-        raise TypeError("The root config must resolve to a mapping.")
+    dist_state = setup_distributed()
+    wandb_enabled = args.wandb and dist_state.is_master
 
-    stage1_cfg = deepcopy(cfg_dict.get("stage_1"))
-    if not stage1_cfg:
-        raise ValueError("Config must define a stage_1 block.")
-    training_cfg: dict[str, Any] = deepcopy(cfg_dict.get("training", {}))
-    gan_cfg: dict[str, Any] = deepcopy(cfg_dict.get("gan", {}))
-    data_cfg: dict[str, Any] = deepcopy(cfg_dict.get("data", {}))
-    eval_cfg: dict[str, Any] = deepcopy(cfg_dict.get("eval", {}))
+    try:
+        full_cfg, config_path = load_config(args.config, args.set_values)
+        cfg_dict = OmegaConf.to_container(full_cfg, resolve=True)
+        if not isinstance(cfg_dict, dict):
+            raise TypeError("The root config must resolve to a mapping.")
 
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    seed_everything(int(training_cfg.get("global_seed", 0)))
+        stage1_cfg = deepcopy(cfg_dict.get("stage_1"))
+        if not stage1_cfg:
+            raise ValueError("Config must define a stage_1 block.")
+        training_cfg: dict[str, Any] = deepcopy(cfg_dict.get("training", {}))
+        gan_cfg: dict[str, Any] = deepcopy(cfg_dict.get("gan", {}))
+        data_cfg: dict[str, Any] = deepcopy(cfg_dict.get("data", {}))
+        eval_cfg: dict[str, Any] = deepcopy(cfg_dict.get("eval", {}))
 
-    precision, autocast_ctx, g_scaler, d_scaler = select_precision(training_cfg, device)
-    image_size = int(training_cfg.get("image_size", 256))
-    random_flip = bool(training_cfg.get("random_flip", True))
-    train_tf, val_tf = build_transforms(image_size=image_size, random_flip=random_flip)
+        seed_everything(int(training_cfg.get("global_seed", 0)), rank=dist_state.rank)
 
-    if "disc" in gan_cfg and isinstance(gan_cfg["disc"], dict):
-        arch_cfg = gan_cfg["disc"].get("arch", {})
-        if isinstance(arch_cfg, dict) and arch_cfg.get("dino_ckpt_path") is not None:
-            arch_cfg["dino_ckpt_path"] = resolve_repo_path(config_path, arch_cfg.get("dino_ckpt_path"))
+        precision, autocast_ctx, g_scaler, d_scaler = select_precision(training_cfg, dist_state.device)
+        image_size = int(training_cfg.get("image_size", 256))
+        random_flip = bool(training_cfg.get("random_flip", True))
+        train_tf, val_tf = build_transforms(image_size=image_size, random_flip=random_flip)
 
-    if data_cfg.get("train_path") is not None:
-        data_cfg["train_path"] = resolve_repo_path(config_path, data_cfg.get("train_path"))
-    if data_cfg.get("val_path") is not None:
-        data_cfg["val_path"] = resolve_repo_path(config_path, data_cfg.get("val_path"))
-    if eval_cfg.get("data_path") is not None:
-        eval_cfg["data_path"] = resolve_repo_path(config_path, eval_cfg.get("data_path"))
+        if "disc" in gan_cfg and isinstance(gan_cfg["disc"], dict):
+            arch_cfg = gan_cfg["disc"].get("arch", {})
+            if isinstance(arch_cfg, dict) and arch_cfg.get("dino_ckpt_path") is not None:
+                arch_cfg["dino_ckpt_path"] = resolve_repo_path(config_path, arch_cfg.get("dino_ckpt_path"))
 
-    train_root = ensure_data_path(
-        args.train_data_path or data_cfg.get("train_path"),
-        label="training data",
-    )
-    val_root_value = args.val_data_path or eval_cfg.get("data_path") or data_cfg.get("val_path")
-    val_root = ensure_data_path(val_root_value, label="validation data") if val_root_value else None
+        if data_cfg.get("train_path") is not None:
+            data_cfg["train_path"] = resolve_repo_path(config_path, data_cfg.get("train_path"))
+        if data_cfg.get("val_path") is not None:
+            data_cfg["val_path"] = resolve_repo_path(config_path, data_cfg.get("val_path"))
+        if eval_cfg.get("data_path") is not None:
+            eval_cfg["data_path"] = resolve_repo_path(config_path, eval_cfg.get("data_path"))
+        if eval_cfg.get("fid_ref") is not None:
+            eval_cfg["fid_ref"] = resolve_repo_path(config_path, eval_cfg.get("fid_ref"))
 
-    train_set = build_image_dataset(train_root, train_tf)
-    val_set = build_image_dataset(val_root, val_tf) if val_root is not None else None
-    batch_size = int(training_cfg.get("batch_size", 16))
-    num_workers = int(training_cfg.get("num_workers", 4))
-    if batch_size <= 0:
-        raise ValueError("training.batch_size must be > 0.")
+        train_root = ensure_data_path(
+            args.train_data_path or data_cfg.get("train_path"),
+            label="training data",
+        )
+        val_root_value = args.val_data_path or eval_cfg.get("data_path") or data_cfg.get("val_path")
+        val_root = ensure_data_path(val_root_value, label="validation data") if val_root_value else None
 
-    train_loader = DataLoader(
-        train_set,
-        batch_size=batch_size,
-        shuffle=True,
-        num_workers=num_workers,
-        pin_memory=device.type == "cuda",
-        drop_last=False,
-    )
-    val_loader = None
-    if val_set is not None:
-        val_loader = DataLoader(
-            val_set,
-            batch_size=int(eval_cfg.get("batch_size", batch_size)),
-            shuffle=False,
-            num_workers=int(eval_cfg.get("num_workers", num_workers)),
-            pin_memory=device.type == "cuda",
+        train_set = build_image_dataset(train_root, train_tf)
+        val_set = build_image_dataset(val_root, val_tf) if val_root is not None else None
+
+        batch_size = int(training_cfg.get("batch_size", 16))
+        num_workers = int(training_cfg.get("num_workers", 4))
+        grad_accum_steps = int(training_cfg.get("grad_accum_steps", 1))
+        if batch_size <= 0:
+            raise ValueError("training.batch_size must be > 0.")
+        if grad_accum_steps <= 0:
+            raise ValueError("training.grad_accum_steps must be > 0.")
+
+        train_sampler = (
+            DistributedSampler(
+                train_set,
+                num_replicas=dist_state.world_size,
+                rank=dist_state.rank,
+                shuffle=True,
+                drop_last=False,
+            )
+            if dist_state.enabled
+            else None
+        )
+        train_loader = DataLoader(
+            train_set,
+            batch_size=batch_size,
+            shuffle=train_sampler is None,
+            sampler=train_sampler,
+            num_workers=num_workers,
+            pin_memory=dist_state.device.type == "cuda",
             drop_last=False,
         )
 
-    stage1_params: dict[str, Any] = dict(stage1_cfg.get("params", {}))
-    for key in ("decoder_config_path", "pretrained_decoder_path", "normalization_stat_path"):
-        resolved = resolve_repo_path(config_path, stage1_params.get(key))
-        if resolved is not None:
-            stage1_params[key] = resolved
-    if stage1_cfg.get("ckpt") is not None:
-        stage1_cfg["ckpt"] = resolve_repo_path(config_path, stage1_cfg.get("ckpt"))
-    if "encoder_params" in stage1_params and isinstance(stage1_params["encoder_params"], dict):
-        dinov2_path = resolve_repo_path(config_path, stage1_params["encoder_params"].get("dinov2_path"))
-        if dinov2_path is not None:
-            stage1_params["encoder_params"]["dinov2_path"] = dinov2_path
-    stage1_cfg["params"] = stage1_params
-
-    train_encoder = bool(training_cfg.get("train_encoder", False))
-    if train_encoder and stage1_params.get("noise_tau", 0.0):
-        raise ValueError("Finetuning the encoder expects stage_1.params.noise_tau=0.0 for stable recon training.")
-    cfg_dict["stage_1"] = deepcopy(stage1_cfg)
-    cfg_dict["gan"] = deepcopy(gan_cfg)
-    cfg_dict["data"] = deepcopy(data_cfg)
-    cfg_dict["eval"] = deepcopy(eval_cfg)
-
-    rae = instantiate_from_config(stage1_cfg).to(device)
-    for param in rae.encoder.parameters():
-        param.requires_grad_(train_encoder)
-    rae.encoder.train(mode=train_encoder)
-    rae.decoder.train()
-
-    lpips_model = LPIPS().eval().to(device)
-    disc, augment = build_discriminator(gan_cfg.get("disc", {}), device=device)
-
-    opt_g = build_stage1_optimizer(rae, training_cfg, train_encoder=train_encoder)
-    opt_d = torch.optim.AdamW(
-        [param for param in disc.parameters() if param.requires_grad],
-        lr=float(gan_cfg.get("disc", {}).get("optimizer", {}).get("lr", 2e-4)),
-        betas=tuple(float(v) for v in gan_cfg.get("disc", {}).get("optimizer", {}).get("betas", (0.5, 0.9))),
-        weight_decay=float(gan_cfg.get("disc", {}).get("optimizer", {}).get("weight_decay", 0.0)),
-        eps=float(gan_cfg.get("disc", {}).get("optimizer", {}).get("eps", 1e-8)),
-    )
-
-    steps_per_epoch = max(len(train_loader), 1)
-    sched_g, _ = build_scheduler(opt_g, steps_per_epoch, training_cfg)
-    disc_sched_cfg = {
-        "scheduler": deepcopy(gan_cfg.get("disc", {}).get("scheduler", {})),
-        "base_lr": float(gan_cfg.get("disc", {}).get("optimizer", {}).get("lr", 2e-4)),
-        "final_lr": float(
-            gan_cfg.get("disc", {}).get("scheduler", {}).get(
-                "final_lr",
-                gan_cfg.get("disc", {}).get("optimizer", {}).get("lr", 2e-4),
+        val_loader = None
+        if val_set is not None and dist_state.is_master:
+            val_loader = DataLoader(
+                val_set,
+                batch_size=int(eval_cfg.get("batch_size", batch_size)),
+                shuffle=False,
+                num_workers=int(eval_cfg.get("num_workers", num_workers)),
+                pin_memory=dist_state.device.type == "cuda",
+                drop_last=False,
             )
-        ),
-    }
-    sched_d, _ = build_scheduler(opt_d, steps_per_epoch, disc_sched_cfg)
 
-    run_state = RunState()
-    if args.resume:
-        run_state = restore_checkpoint(
-            Path(args.resume).expanduser().resolve(),
-            rae=rae,
-            disc=disc,
-            opt_g=opt_g,
-            opt_d=opt_d,
-            sched_g=sched_g,
-            sched_d=sched_d,
-            g_scaler=g_scaler,
-            d_scaler=d_scaler,
+        stage1_params: dict[str, Any] = dict(stage1_cfg.get("params", {}))
+        for key in ("decoder_config_path", "pretrained_decoder_path", "normalization_stat_path"):
+            resolved = resolve_repo_path(config_path, stage1_params.get(key))
+            if resolved is not None:
+                stage1_params[key] = resolved
+        if stage1_cfg.get("ckpt") is not None:
+            stage1_cfg["ckpt"] = resolve_repo_path(config_path, stage1_cfg.get("ckpt"))
+        if "encoder_params" in stage1_params and isinstance(stage1_params["encoder_params"], dict):
+            dinov2_path = resolve_repo_path(config_path, stage1_params["encoder_params"].get("dinov2_path"))
+            if dinov2_path is not None:
+                stage1_params["encoder_params"]["dinov2_path"] = dinov2_path
+        stage1_cfg["params"] = stage1_params
+
+        train_encoder = bool(training_cfg.get("train_encoder", False))
+        if train_encoder and stage1_params.get("noise_tau", 0.0):
+            raise ValueError("Finetuning the encoder expects stage_1.params.noise_tau=0.0 for stable recon training.")
+
+        epochs = int(training_cfg.get("epochs", 16))
+        log_every = int(training_cfg.get("log_every", 50))
+        image_log_every = int(training_cfg.get("image_log_every", 200))
+        eval_every = int(training_cfg.get("eval_every", 1))
+        save_every = int(training_cfg.get("save_every", 1))
+        eval_max_batches_raw = eval_cfg.get("max_batches")
+        eval_max_batches = int(eval_max_batches_raw) if eval_max_batches_raw is not None else None
+        clip_grad = float(training_cfg.get("clip_grad", 1.0))
+        recon_weight = float(training_cfg.get("recon_weight", 1.0))
+        perceptual_weight = float(gan_cfg.get("loss", {}).get("perceptual_weight", 1.0))
+        disc_weight = float(gan_cfg.get("loss", {}).get("disc_weight", 1.0))
+        max_d_weight = float(gan_cfg.get("loss", {}).get("max_d_weight", 1.0e4))
+        lpips_start = int(gan_cfg.get("loss", {}).get("lpips_start", 0))
+        disc_start = int(gan_cfg.get("loss", {}).get("disc_start", 0))
+        disc_upd_start = int(gan_cfg.get("loss", {}).get("disc_upd_start", disc_start))
+        disc_updates = int(gan_cfg.get("loss", {}).get("disc_updates", 1))
+        visual_count = int(training_cfg.get("num_visuals", 8))
+        if grad_accum_steps > 1 and disc_updates != 1:
+            raise ValueError("training.grad_accum_steps > 1 currently requires gan.loss.disc_updates=1.")
+
+        fid_ref = eval_cfg.get("fid_ref")
+        fid_enabled = fid_ref is not None
+        fid_every = int(eval_cfg.get("fid_every", eval_every))
+        fid_batch_size = int(eval_cfg.get("fid_batch_size", 64))
+        fid_device = str(eval_cfg.get("fid_device", "auto"))
+        raw_fid_num_threads = eval_cfg.get("fid_num_threads")
+        fid_num_threads = int(raw_fid_num_threads) if raw_fid_num_threads is not None else None
+        if fid_enabled and val_loader is None:
+            raise ValueError("eval.fid_ref requires validation data via eval.data_path or data.val_path.")
+
+        cfg_dict["stage_1"] = deepcopy(stage1_cfg)
+        cfg_dict["gan"] = deepcopy(gan_cfg)
+        cfg_dict["data"] = deepcopy(data_cfg)
+        cfg_dict["eval"] = deepcopy(eval_cfg)
+
+        rae_module = instantiate_from_config(stage1_cfg).to(dist_state.device)
+        for param in rae_module.encoder.parameters():
+            param.requires_grad_(train_encoder)
+        rae_module.encoder.train(mode=train_encoder)
+        rae_module.decoder.train()
+
+        lpips_model = LPIPS().eval().to(dist_state.device)
+        disc_module, augment = build_discriminator(gan_cfg.get("disc", {}), device=dist_state.device)
+
+        opt_g = build_stage1_optimizer(rae_module, training_cfg, train_encoder=train_encoder)
+        opt_d = torch.optim.AdamW(
+            [param for param in disc_module.parameters() if param.requires_grad],
+            lr=float(gan_cfg.get("disc", {}).get("optimizer", {}).get("lr", 2e-4)),
+            betas=tuple(float(v) for v in gan_cfg.get("disc", {}).get("optimizer", {}).get("betas", (0.5, 0.9))),
+            weight_decay=float(gan_cfg.get("disc", {}).get("optimizer", {}).get("weight_decay", 0.0)),
+            eps=float(gan_cfg.get("disc", {}).get("optimizer", {}).get("eps", 1e-8)),
         )
 
-    disc_loss_name = str(gan_cfg.get("loss", {}).get("disc_loss", "hinge")).lower()
-    if disc_loss_name == "hinge":
-        disc_loss_fn = hinge_d_loss
-    elif disc_loss_name == "vanilla":
-        disc_loss_fn = vanilla_d_loss
-    else:
-        raise ValueError(f"Unsupported gan.loss.disc_loss '{disc_loss_name}'.")
-
-    gen_loss_name = str(gan_cfg.get("loss", {}).get("gen_loss", "vanilla")).lower()
-    if gen_loss_name != "vanilla":
-        raise ValueError("Only gan.loss.gen_loss=vanilla is currently supported.")
-
-    results_dir = Path(args.results_dir).expanduser().resolve()
-    timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
-    exp_name = args.exp_name or f"stage1-rae-{timestamp}"
-    workdir = results_dir / exp_name
-    ckpt_dir = workdir / "checkpoints"
-    sample_dir = workdir / "samples"
-    ckpt_dir.mkdir(parents=True, exist_ok=True)
-    sample_dir.mkdir(parents=True, exist_ok=True)
-    (workdir / "config.resolved.json").write_text(json.dumps(cfg_dict, indent=2), encoding="utf-8")
-
-    prepare_wandb(
-        enabled=args.wandb,
-        entity=args.wandb_entity,
-        project=args.wandb_project,
-        group=args.wandb_group,
-        tags=args.wandb_tags,
-        exp_name=exp_name,
-        cli_args=args,
-        config=cfg_dict,
-    )
-
-    epochs = int(training_cfg.get("epochs", 16))
-    log_every = int(training_cfg.get("log_every", 50))
-    image_log_every = int(training_cfg.get("image_log_every", 200))
-    eval_every = int(training_cfg.get("eval_every", 1))
-    save_every = int(training_cfg.get("save_every", 1))
-    eval_max_batches = eval_cfg.get("max_batches")
-    eval_max_batches = int(eval_max_batches) if eval_max_batches is not None else None
-    clip_grad = float(training_cfg.get("clip_grad", 1.0))
-    recon_weight = float(training_cfg.get("recon_weight", 1.0))
-    perceptual_weight = float(gan_cfg.get("loss", {}).get("perceptual_weight", 1.0))
-    disc_weight = float(gan_cfg.get("loss", {}).get("disc_weight", 1.0))
-    max_d_weight = float(gan_cfg.get("loss", {}).get("max_d_weight", 1.0e4))
-    lpips_start = int(gan_cfg.get("loss", {}).get("lpips_start", 0))
-    disc_start = int(gan_cfg.get("loss", {}).get("disc_start", 0))
-    disc_upd_start = int(gan_cfg.get("loss", {}).get("disc_upd_start", disc_start))
-    disc_updates = int(gan_cfg.get("loss", {}).get("disc_updates", 1))
-    visual_count = int(training_cfg.get("num_visuals", 8))
-
-    recon_history: deque[float] = deque(maxlen=log_every)
-    lpips_history: deque[float] = deque(maxlen=log_every)
-    adv_history: deque[float] = deque(maxlen=log_every)
-    disc_history: deque[float] = deque(maxlen=log_every)
-    psnr_history: deque[float] = deque(maxlen=log_every)
-
-    for epoch in range(run_state.epoch, epochs):
-        rae.train()
-        rae.encoder.train(mode=train_encoder)
-        disc.train()
-        preview_for_log: np.ndarray | None = None
-
-        for images, _ in train_loader:
-            images = images.to(device, non_blocking=True)
-            run_state.global_step += 1
-            step = run_state.global_step
-
-            opt_g.zero_grad(set_to_none=True)
-            with autocast_ctx():
-                latents = rae.encode(images)
-                recon = rae.decode(latents)
-            recon = recon.clamp(0, 1)
-            preview_for_log = make_preview(images.detach().cpu(), recon.detach().cpu(), max_items=visual_count)
-
-            recon_loss = torch.mean(torch.abs(recon - images))
-            real_pm1 = images * 2 - 1
-            recon_pm1 = recon * 2 - 1
-            use_lpips = epoch >= lpips_start
-            lpips_loss = (
-                lpips_model(recon_pm1.float(), real_pm1.float(), reduction="mean")
-                if use_lpips
-                else torch.zeros((), device=device)
-            )
-            g_adv_raw = torch.zeros((), device=device)
-            adaptive_disc_weight = torch.zeros((), device=device)
-            if epoch >= disc_start:
-                with autocast_ctx():
-                    logits_fake = disc.classify(augment.aug(recon_pm1))
-                g_adv_raw = vanilla_g_loss(logits_fake.float())
-                adaptive_disc_weight = calculate_adaptive_weight(
-                    recon_weight * recon_loss + perceptual_weight * lpips_loss,
-                    g_adv_raw,
-                    rae.decoder.decoder_pred.weight,
-                    disc_weight=disc_weight,
-                    max_d_weight=max_d_weight,
+        steps_per_epoch = max(math.ceil(len(train_loader) / grad_accum_steps), 1)
+        sched_g, _ = build_scheduler(opt_g, steps_per_epoch, training_cfg)
+        disc_sched_cfg = {
+            "scheduler": deepcopy(gan_cfg.get("disc", {}).get("scheduler", {})),
+            "base_lr": float(gan_cfg.get("disc", {}).get("optimizer", {}).get("lr", 2e-4)),
+            "final_lr": float(
+                gan_cfg.get("disc", {}).get("scheduler", {}).get(
+                    "final_lr",
+                    gan_cfg.get("disc", {}).get("optimizer", {}).get("lr", 2e-4),
                 )
+            ),
+        }
+        sched_d, _ = build_scheduler(opt_d, steps_per_epoch, disc_sched_cfg)
 
-            gen_total = recon_weight * recon_loss + perceptual_weight * lpips_loss + adaptive_disc_weight * g_adv_raw
-            if precision == "fp16":
-                g_scaler.scale(gen_total).backward()
-                if clip_grad > 0:
-                    g_scaler.unscale_(opt_g)
-                    clip_grad_norm_([p for p in rae.parameters() if p.requires_grad], clip_grad)
-                g_scaler.step(opt_g)
-                g_scaler.update()
-            else:
-                gen_total.backward()
-                if clip_grad > 0:
-                    clip_grad_norm_([p for p in rae.parameters() if p.requires_grad], clip_grad)
-                opt_g.step()
-            sched_g.step()
+        if args.resume:
+            restore_state = restore_checkpoint(
+                Path(args.resume).expanduser().resolve(),
+                rae=rae_module,
+                disc=disc_module,
+                opt_g=opt_g,
+                opt_d=opt_d,
+                sched_g=sched_g,
+                sched_d=sched_d,
+                g_scaler=g_scaler,
+                d_scaler=d_scaler,
+            )
+        else:
+            restore_state = RunState()
 
-            disc_value = torch.zeros((), device=device)
-            logits_real_mean = torch.zeros((), device=device)
-            logits_fake_mean = torch.zeros((), device=device)
-            if epoch >= disc_upd_start:
-                for _ in range(max(disc_updates, 1)):
-                    opt_d.zero_grad(set_to_none=True)
+        if dist_state.enabled:
+            ddp_kwargs: dict[str, Any] = {
+                "device_ids": [dist_state.local_rank] if dist_state.device.type == "cuda" else None,
+                "output_device": dist_state.local_rank if dist_state.device.type == "cuda" else None,
+                "broadcast_buffers": False,
+                "find_unused_parameters": False,
+            }
+            rae: nn.Module = DDP(rae_module, **ddp_kwargs)
+            disc: nn.Module = DDP(disc_module, **ddp_kwargs)
+        else:
+            rae = rae_module
+            disc = disc_module
+
+        disc_loss_name = str(gan_cfg.get("loss", {}).get("disc_loss", "hinge")).lower()
+        if disc_loss_name == "hinge":
+            disc_loss_fn = hinge_d_loss
+        elif disc_loss_name == "vanilla":
+            disc_loss_fn = vanilla_d_loss
+        else:
+            raise ValueError(f"Unsupported gan.loss.disc_loss '{disc_loss_name}'.")
+
+        gen_loss_name = str(gan_cfg.get("loss", {}).get("gen_loss", "vanilla")).lower()
+        if gen_loss_name != "vanilla":
+            raise ValueError("Only gan.loss.gen_loss=vanilla is currently supported.")
+
+        results_dir = Path(args.results_dir).expanduser().resolve()
+        timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+        exp_name = args.exp_name or f"stage1-rae-{timestamp}"
+        workdir = results_dir / exp_name
+        ckpt_dir = workdir / "checkpoints"
+        sample_dir = workdir / "samples"
+        if dist_state.is_master:
+            ckpt_dir.mkdir(parents=True, exist_ok=True)
+            sample_dir.mkdir(parents=True, exist_ok=True)
+            (workdir / "config.resolved.json").write_text(json.dumps(cfg_dict, indent=2), encoding="utf-8")
+        barrier_if_needed(dist_state)
+
+        prepare_wandb(
+            enabled=wandb_enabled,
+            entity=args.wandb_entity,
+            project=args.wandb_project,
+            group=args.wandb_group,
+            tags=args.wandb_tags,
+            exp_name=exp_name,
+            cli_args=args,
+            config=cfg_dict,
+        )
+
+        if dist_state.is_master:
+            effective_batch_size = batch_size * dist_state.world_size * grad_accum_steps
+            print(
+                f"Stage 1 trainer using device={dist_state.device}, "
+                f"world_size={dist_state.world_size}, "
+                f"micro_batch_size={batch_size}, "
+                f"grad_accum_steps={grad_accum_steps}, "
+                f"effective_batch_size={effective_batch_size}."
+            )
+
+        run_state = restore_state
+        recon_history: deque[float] = deque(maxlen=log_every)
+        lpips_history: deque[float] = deque(maxlen=log_every)
+        adv_history: deque[float] = deque(maxlen=log_every)
+        disc_history: deque[float] = deque(maxlen=log_every)
+        psnr_history: deque[float] = deque(maxlen=log_every)
+
+        for epoch in range(run_state.epoch, epochs):
+            if train_sampler is not None:
+                train_sampler.set_epoch(epoch)
+
+            rae.train()
+            unwrap_module(rae).encoder.train(mode=train_encoder)
+            disc.train()
+            preview_for_log: np.ndarray | None = None
+            opt_g.zero_grad(set_to_none=True)
+            opt_d.zero_grad(set_to_none=True)
+
+            accum_counter = 0
+            window_recon = 0.0
+            window_lpips = 0.0
+            window_adv = 0.0
+            window_disc = 0.0
+            window_psnr = 0.0
+            window_latent_rms = 0.0
+            window_latent_var = 0.0
+            window_logits_real = 0.0
+            window_logits_fake = 0.0
+            window_adaptive_weight = 0.0
+            window_gen_total = 0.0
+
+            for batch_idx, batch in enumerate(train_loader):
+                images = extract_images(batch).to(dist_state.device, non_blocking=True)
+                last_batch = batch_idx == len(train_loader) - 1
+                should_sync = ((accum_counter + 1) % grad_accum_steps == 0) or last_batch
+
+                with sync_context(rae, should_sync):
                     with autocast_ctx():
-                        fake_aug = augment.aug(recon_pm1.detach())
-                        real_aug = augment.aug(real_pm1)
-                        logits_fake_d, logits_real_d = disc(fake_aug, real_aug)
-                        disc_value = disc_loss_fn(logits_real_d.float(), logits_fake_d.float())
-                    logits_real_mean = logits_real_d.float().mean()
-                    logits_fake_mean = logits_fake_d.float().mean()
+                        latents, recon = rae(images, return_latents=True)
+                    recon = recon.clamp(0, 1)
+                    preview_for_log = make_preview(images.detach().cpu(), recon.detach().cpu(), max_items=visual_count)
+
+                    recon_loss = torch.mean(torch.abs(recon - images))
+                    real_pm1 = images * 2 - 1
+                    recon_pm1 = recon * 2 - 1
+                    use_lpips = epoch >= lpips_start
+                    lpips_loss = (
+                        lpips_model(recon_pm1.float(), real_pm1.float(), reduction="mean")
+                        if use_lpips
+                        else torch.zeros((), device=dist_state.device)
+                    )
+                    g_adv_raw = torch.zeros((), device=dist_state.device)
+                    adaptive_disc_weight = torch.zeros((), device=dist_state.device)
+                    if epoch >= disc_start:
+                        with autocast_ctx():
+                            logits_fake, _ = disc(augment.aug(recon_pm1), None)
+                        g_adv_raw = vanilla_g_loss(logits_fake.float())
+                        adaptive_disc_weight = calculate_adaptive_weight(
+                            recon_weight * recon_loss + perceptual_weight * lpips_loss,
+                            g_adv_raw,
+                            unwrap_module(rae).decoder.decoder_pred.weight,
+                            disc_weight=disc_weight,
+                            max_d_weight=max_d_weight,
+                        )
+
+                    gen_total = recon_weight * recon_loss + perceptual_weight * lpips_loss + adaptive_disc_weight * g_adv_raw
                     if precision == "fp16":
-                        d_scaler.scale(disc_value).backward()
-                        if clip_grad > 0:
-                            d_scaler.unscale_(opt_d)
-                            clip_grad_norm_(disc.parameters(), clip_grad)
+                        g_scaler.scale(gen_total / grad_accum_steps).backward()
+                    else:
+                        (gen_total / grad_accum_steps).backward()
+
+                disc_value = torch.zeros((), device=dist_state.device)
+                logits_real_mean = torch.zeros((), device=dist_state.device)
+                logits_fake_mean = torch.zeros((), device=dist_state.device)
+                if epoch >= disc_upd_start:
+                    with sync_context(disc, should_sync):
+                        with autocast_ctx():
+                            fake_aug = augment.aug(recon_pm1.detach())
+                            real_aug = augment.aug(real_pm1)
+                            logits_fake_d, logits_real_d = disc(fake_aug, real_aug)
+                            disc_value = disc_loss_fn(logits_real_d.float(), logits_fake_d.float())
+                        logits_real_mean = logits_real_d.float().mean()
+                        logits_fake_mean = logits_fake_d.float().mean()
+                        if precision == "fp16":
+                            d_scaler.scale(disc_value / grad_accum_steps).backward()
+                        else:
+                            (disc_value / grad_accum_steps).backward()
+
+                accum_counter += 1
+                window_recon += float(recon_loss.item())
+                window_lpips += float(lpips_loss.item())
+                window_adv += float(g_adv_raw.item())
+                window_disc += float(disc_value.item())
+                window_psnr += compute_psnr(recon.detach(), images.detach())
+                window_latent_rms += float(torch.sqrt(torch.mean(latents.detach().float() ** 2)).item())
+                window_latent_var += float(torch.var(latents.detach().float(), unbiased=False).item())
+                window_logits_real += float(logits_real_mean.item())
+                window_logits_fake += float(logits_fake_mean.item())
+                window_adaptive_weight += float(adaptive_disc_weight.item())
+                window_gen_total += float(gen_total.item())
+
+                if not should_sync:
+                    continue
+
+                if precision == "fp16":
+                    g_scaler.unscale_(opt_g)
+                decoder_grad_norm = module_grad_norm(unwrap_module(rae).decoder)
+                encoder_grad_norm = module_grad_norm(unwrap_module(rae).encoder) if train_encoder else 0.0
+                if clip_grad > 0:
+                    clip_grad_norm_([p for p in unwrap_module(rae).parameters() if p.requires_grad], clip_grad)
+                if precision == "fp16":
+                    g_scaler.step(opt_g)
+                    g_scaler.update()
+                else:
+                    opt_g.step()
+                sched_g.step()
+                decoder_param_norm = module_param_norm(unwrap_module(rae).decoder)
+                encoder_param_norm = module_param_norm(unwrap_module(rae).encoder) if train_encoder else 0.0
+                opt_g.zero_grad(set_to_none=True)
+
+                discriminator_grad_norm = 0.0
+                discriminator_param_norm = module_param_norm(unwrap_module(disc))
+                if epoch >= disc_upd_start:
+                    if precision == "fp16":
+                        d_scaler.unscale_(opt_d)
+                    discriminator_grad_norm = module_grad_norm(unwrap_module(disc))
+                    if clip_grad > 0:
+                        clip_grad_norm_(unwrap_module(disc).parameters(), clip_grad)
+                    if precision == "fp16":
                         d_scaler.step(opt_d)
                         d_scaler.update()
                     else:
-                        disc_value.backward()
-                        if clip_grad > 0:
-                            clip_grad_norm_(disc.parameters(), clip_grad)
                         opt_d.step()
                     sched_d.step()
+                    discriminator_param_norm = module_param_norm(unwrap_module(disc))
+                    opt_d.zero_grad(set_to_none=True)
 
-            recon_history.append(float(recon_loss.item()))
-            lpips_history.append(float(lpips_loss.item()))
-            adv_history.append(float(g_adv_raw.item()))
-            disc_history.append(float(disc_value.item()))
-            psnr_history.append(compute_psnr(recon.detach(), images.detach()))
-
-            should_log = step == 1 or (log_every > 0 and step % log_every == 0)
-            if should_log:
-                train_metrics = {
-                    "train/step": step,
-                    "train/epoch": epoch,
-                    "train/l1": recent_mean(recon_history),
-                    "train/lpips": recent_mean(lpips_history),
-                    "train/g_adv": recent_mean(adv_history),
-                    "train/d_loss": recent_mean(disc_history),
-                    "train/psnr": recent_mean(psnr_history),
-                    "train/lr_decoder": float(opt_g.param_groups[0]["lr"]),
-                    "train/latent_rms": float(torch.sqrt(torch.mean(latents.detach().float() ** 2)).item()),
-                    "train/latent_var": float(torch.var(latents.detach().float(), unbiased=False).item()),
-                    "train/decoder_grad_norm": module_grad_norm(rae.decoder),
-                    "train/decoder_param_norm": module_param_norm(rae.decoder),
-                    "train/discriminator_grad_norm": module_grad_norm(disc),
-                    "train/discriminator_param_norm": module_param_norm(disc),
-                    "train/logits_real": float(logits_real_mean.item()),
-                    "train/logits_fake": float(logits_fake_mean.item()),
-                    "train/adaptive_disc_weight": float(adaptive_disc_weight.item()),
-                    "train/gen_total": float(gen_total.item()),
-                    "train/precision": {"fp32": 32, "bf16": 16, "fp16": 15}[precision],
-                }
-                if train_encoder:
-                    train_metrics["train/encoder_lr"] = float(opt_g.param_groups[-1]["lr"])
-                    train_metrics["train/encoder_grad_norm"] = module_grad_norm(rae.encoder)
-                    train_metrics["train/encoder_param_norm"] = module_param_norm(rae.encoder)
-                else:
-                    train_metrics["train/encoder_grad_norm"] = 0.0
-                print(
-                    f"[epoch {epoch:03d} step {step:07d}] "
-                    f"l1={train_metrics['train/l1']:.4f} "
-                    f"lpips={train_metrics['train/lpips']:.4f} "
-                    f"g_adv={train_metrics['train/g_adv']:.4f} "
-                    f"d={train_metrics['train/d_loss']:.4f} "
-                    f"psnr={train_metrics['train/psnr']:.2f}"
-                )
-                if args.wandb:
-                    wandb.log(train_metrics, step=step)
-
-            if image_log_every > 0 and step % image_log_every == 0 and preview_for_log is not None:
-                save_preview(sample_dir / f"train_step_{step:07d}.png", preview_for_log)
-            if args.wandb and image_log_every > 0 and step % image_log_every == 0 and preview_for_log is not None:
-                wandb.log(
+                run_state.global_step += 1
+                step = run_state.global_step
+                denom = float(accum_counter)
+                reduced_step_metrics = distributed_mean_dict(
                     {
-                        "train/step": step,
-                        "images/train_recon": wandb.Image(preview_for_log),
+                        "train/l1_step": window_recon / denom,
+                        "train/lpips_step": window_lpips / denom,
+                        "train/g_adv_step": window_adv / denom,
+                        "train/d_loss_step": window_disc / denom,
+                        "train/psnr_step": window_psnr / denom,
+                        "train/latent_rms_step": window_latent_rms / denom,
+                        "train/latent_var_step": window_latent_var / denom,
+                        "train/logits_real_step": window_logits_real / denom,
+                        "train/logits_fake_step": window_logits_fake / denom,
+                        "train/adaptive_disc_weight_step": window_adaptive_weight / denom,
+                        "train/gen_total_step": window_gen_total / denom,
+                        "train/decoder_grad_norm_step": decoder_grad_norm,
+                        "train/decoder_param_norm_step": decoder_param_norm,
+                        "train/discriminator_grad_norm_step": discriminator_grad_norm,
+                        "train/discriminator_param_norm_step": discriminator_param_norm,
+                        "train/encoder_grad_norm_step": encoder_grad_norm,
+                        "train/encoder_param_norm_step": encoder_param_norm,
                     },
-                    step=step,
+                    device=dist_state.device,
+                    enabled=dist_state.enabled,
+                    world_size=dist_state.world_size,
                 )
 
-        if val_loader is not None and eval_every > 0 and (epoch + 1) % eval_every == 0:
-            val_metrics, val_preview = evaluate(
-                rae=rae,
-                loader=val_loader,
-                lpips_model=lpips_model,
-                device=device,
-                max_batches=eval_max_batches,
-                image_log_count=visual_count,
-            )
-            val_metrics["train/step"] = run_state.global_step
-            print(
-                f"[val epoch {epoch:03d}] "
-                f"l1={val_metrics['val/l1']:.4f} "
-                f"lpips={val_metrics['val/lpips']:.4f} "
-                f"psnr={val_metrics['val/psnr']:.2f}"
-            )
-            best_so_far = run_state.best_val_lpips
-            current_lpips = val_metrics["val/lpips"]
-            improved = best_so_far is None or current_lpips < best_so_far
-            if improved:
-                run_state.best_val_lpips = current_lpips
-                save_checkpoint(
-                    ckpt_dir / "best.pt",
-                    rae=rae,
-                    disc=disc,
-                    opt_g=opt_g,
-                    opt_d=opt_d,
-                    sched_g=sched_g,
-                    sched_d=sched_d,
-                    g_scaler=g_scaler,
-                    d_scaler=d_scaler,
-                    run_state=run_state,
-                    config=cfg_dict,
-                )
-            if val_preview is not None:
-                save_preview(sample_dir / f"val_epoch_{epoch + 1:03d}.png", val_preview)
-            if args.wandb:
-                log_payload: dict[str, Any] = dict(val_metrics)
-                if val_preview is not None:
-                    log_payload["images/val_recon"] = wandb.Image(val_preview)
-                wandb.log(log_payload, step=run_state.global_step)
+                if dist_state.is_master:
+                    recon_history.append(reduced_step_metrics["train/l1_step"])
+                    lpips_history.append(reduced_step_metrics["train/lpips_step"])
+                    adv_history.append(reduced_step_metrics["train/g_adv_step"])
+                    disc_history.append(reduced_step_metrics["train/d_loss_step"])
+                    psnr_history.append(reduced_step_metrics["train/psnr_step"])
 
-        run_state.epoch = epoch + 1
-        if save_every > 0 and (epoch + 1) % save_every == 0:
-            save_checkpoint(
-                ckpt_dir / f"epoch_{epoch + 1:03d}.pt",
-                rae=rae,
-                disc=disc,
-                opt_g=opt_g,
-                opt_d=opt_d,
-                sched_g=sched_g,
-                sched_d=sched_d,
-                g_scaler=g_scaler,
-                d_scaler=d_scaler,
-                run_state=run_state,
-                config=cfg_dict,
-            )
-            save_checkpoint(
-                ckpt_dir / "last.pt",
-                rae=rae,
-                disc=disc,
-                opt_g=opt_g,
-                opt_d=opt_d,
-                sched_g=sched_g,
-                sched_d=sched_d,
-                g_scaler=g_scaler,
-                d_scaler=d_scaler,
-                run_state=run_state,
-                config=cfg_dict,
-            )
+                    should_log = step == 1 or (log_every > 0 and step % log_every == 0)
+                    if should_log:
+                        train_metrics = {
+                            "train/step": step,
+                            "train/epoch": epoch,
+                            "train/l1": recent_mean(recon_history),
+                            "train/lpips": recent_mean(lpips_history),
+                            "train/g_adv": recent_mean(adv_history),
+                            "train/d_loss": recent_mean(disc_history),
+                            "train/psnr": recent_mean(psnr_history),
+                            "train/lr_decoder": float(opt_g.param_groups[0]["lr"]),
+                            "train/latent_rms": reduced_step_metrics["train/latent_rms_step"],
+                            "train/latent_var": reduced_step_metrics["train/latent_var_step"],
+                            "train/decoder_grad_norm": reduced_step_metrics["train/decoder_grad_norm_step"],
+                            "train/decoder_param_norm": reduced_step_metrics["train/decoder_param_norm_step"],
+                            "train/discriminator_grad_norm": reduced_step_metrics["train/discriminator_grad_norm_step"],
+                            "train/discriminator_param_norm": reduced_step_metrics["train/discriminator_param_norm_step"],
+                            "train/logits_real": reduced_step_metrics["train/logits_real_step"],
+                            "train/logits_fake": reduced_step_metrics["train/logits_fake_step"],
+                            "train/adaptive_disc_weight": reduced_step_metrics["train/adaptive_disc_weight_step"],
+                            "train/gen_total": reduced_step_metrics["train/gen_total_step"],
+                            "train/precision": {"fp32": 32, "bf16": 16, "fp16": 15}[precision],
+                            "train/world_size": float(dist_state.world_size),
+                            "train/micro_batch_size": float(batch_size),
+                            "train/grad_accum_steps": float(grad_accum_steps),
+                            "train/effective_batch_size": float(batch_size * dist_state.world_size * grad_accum_steps),
+                        }
+                        if train_encoder:
+                            train_metrics["train/encoder_lr"] = float(opt_g.param_groups[-1]["lr"])
+                            train_metrics["train/encoder_grad_norm"] = reduced_step_metrics["train/encoder_grad_norm_step"]
+                            train_metrics["train/encoder_param_norm"] = reduced_step_metrics["train/encoder_param_norm_step"]
+                        else:
+                            train_metrics["train/encoder_grad_norm"] = 0.0
+                        print(
+                            f"[epoch {epoch:03d} step {step:07d}] "
+                            f"l1={train_metrics['train/l1']:.4f} "
+                            f"lpips={train_metrics['train/lpips']:.4f} "
+                            f"g_adv={train_metrics['train/g_adv']:.4f} "
+                            f"d={train_metrics['train/d_loss']:.4f} "
+                            f"psnr={train_metrics['train/psnr']:.2f}"
+                        )
+                        if wandb_enabled:
+                            wandb.log(train_metrics, step=step)
 
-    if args.wandb:
-        wandb.finish()
+                    if image_log_every > 0 and step % image_log_every == 0 and preview_for_log is not None:
+                        save_preview(sample_dir / f"train_step_{step:07d}.png", preview_for_log)
+                    if wandb_enabled and image_log_every > 0 and step % image_log_every == 0 and preview_for_log is not None:
+                        wandb.log(
+                            {
+                                "train/step": step,
+                                "images/train_recon": wandb.Image(preview_for_log),
+                            },
+                            step=step,
+                        )
+
+                accum_counter = 0
+                window_recon = 0.0
+                window_lpips = 0.0
+                window_adv = 0.0
+                window_disc = 0.0
+                window_psnr = 0.0
+                window_latent_rms = 0.0
+                window_latent_var = 0.0
+                window_logits_real = 0.0
+                window_logits_fake = 0.0
+                window_adaptive_weight = 0.0
+                window_gen_total = 0.0
+
+            if val_loader is not None and eval_every > 0 and (epoch + 1) % eval_every == 0:
+                barrier_if_needed(dist_state)
+                if dist_state.is_master:
+                    val_metrics, val_preview = evaluate(
+                        rae=rae_module,
+                        loader=val_loader,
+                        lpips_model=lpips_model,
+                        device=dist_state.device,
+                        max_batches=eval_max_batches,
+                        image_log_count=visual_count,
+                        autocast_ctx=autocast_ctx,
+                    )
+                    val_metrics["train/step"] = run_state.global_step
+                    print(
+                        f"[val epoch {epoch:03d}] "
+                        f"l1={val_metrics['val/l1']:.4f} "
+                        f"lpips={val_metrics['val/lpips']:.4f} "
+                        f"psnr={val_metrics['val/psnr']:.2f}"
+                    )
+                    best_so_far = run_state.best_val_lpips
+                    current_lpips = val_metrics["val/lpips"]
+                    improved = best_so_far is None or current_lpips < best_so_far
+                    if improved:
+                        run_state.best_val_lpips = current_lpips
+                        save_checkpoint(
+                            ckpt_dir / "best.pt",
+                            rae=rae_module,
+                            disc=disc_module,
+                            opt_g=opt_g,
+                            opt_d=opt_d,
+                            sched_g=sched_g,
+                            sched_d=sched_d,
+                            g_scaler=g_scaler,
+                            d_scaler=d_scaler,
+                            run_state=run_state,
+                            config=cfg_dict,
+                        )
+                    if val_preview is not None:
+                        save_preview(sample_dir / f"val_epoch_{epoch + 1:03d}.png", val_preview)
+                    if wandb_enabled:
+                        log_payload: dict[str, Any] = dict(val_metrics)
+                        if val_preview is not None:
+                            log_payload["images/val_recon"] = wandb.Image(val_preview)
+                        wandb.log(log_payload, step=run_state.global_step)
+                barrier_if_needed(dist_state)
+
+            if fid_enabled and val_loader is not None and fid_every > 0 and (epoch + 1) % fid_every == 0:
+                barrier_if_needed(dist_state)
+                if dist_state.is_master:
+                    fid_started_at = datetime.now()
+                    fid_metrics = run_reconstruction_fid(
+                        rae=rae_module,
+                        loader=val_loader,
+                        device=dist_state.device,
+                        max_batches=eval_max_batches,
+                        autocast_ctx=autocast_ctx,
+                        fid_ref=str(fid_ref),
+                        fid_batch_size=fid_batch_size,
+                        fid_device=fid_device,
+                        fid_num_threads=fid_num_threads,
+                        workdir=workdir,
+                        global_step=run_state.global_step,
+                    )
+                    fid_metrics["train/step"] = run_state.global_step
+                    fid_metrics["val/fid_duration_sec"] = float((datetime.now() - fid_started_at).total_seconds())
+                    print(
+                        f"[fid epoch {epoch:03d}] "
+                        f"fid={fid_metrics['val/fid']:.4f} "
+                        f"num_samples={int(fid_metrics['val/fid_num_samples'])}"
+                    )
+                    if wandb_enabled:
+                        wandb.log(fid_metrics, step=run_state.global_step)
+                barrier_if_needed(dist_state)
+
+            run_state.epoch = epoch + 1
+            if save_every > 0 and (epoch + 1) % save_every == 0:
+                barrier_if_needed(dist_state)
+                if dist_state.is_master:
+                    save_checkpoint(
+                        ckpt_dir / f"epoch_{epoch + 1:03d}.pt",
+                        rae=rae_module,
+                        disc=disc_module,
+                        opt_g=opt_g,
+                        opt_d=opt_d,
+                        sched_g=sched_g,
+                        sched_d=sched_d,
+                        g_scaler=g_scaler,
+                        d_scaler=d_scaler,
+                        run_state=run_state,
+                        config=cfg_dict,
+                    )
+                    save_checkpoint(
+                        ckpt_dir / "last.pt",
+                        rae=rae_module,
+                        disc=disc_module,
+                        opt_g=opt_g,
+                        opt_d=opt_d,
+                        sched_g=sched_g,
+                        sched_d=sched_d,
+                        g_scaler=g_scaler,
+                        d_scaler=d_scaler,
+                        run_state=run_state,
+                        config=cfg_dict,
+                    )
+                barrier_if_needed(dist_state)
+    finally:
+        if wandb_enabled:
+            wandb.finish()
+        cleanup_distributed(dist_state)
 
 
 if __name__ == "__main__":

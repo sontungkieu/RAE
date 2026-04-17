@@ -177,10 +177,11 @@ Lưu ý:
 \end{itemize}
 
 Riêng \texttt{src/train\_stage1\_rae.py}, block \texttt{training} còn dùng thêm
-\texttt{batch\_size}, \texttt{image\_size}, \texttt{precision},
+\texttt{batch\_size}, \texttt{grad\_accum\_steps}, \texttt{image\_size}, \texttt{precision},
 \texttt{image\_log\_every}, \texttt{eval\_every}, \texttt{save\_every},
 \texttt{recon\_weight}, \texttt{train\_encoder}, \texttt{encoder\_lr}, và
-\texttt{num\_visuals}.
+\texttt{num\_visuals}. Với DDP, effective batch size của local trainer là
+\texttt{batch\_size * world\_size * grad\_accum\_steps}.
 
 \subsection{Block \texttt{gan}}
 
@@ -279,6 +280,13 @@ Trên đường JAX, metric \texttt{FID-4K (cfg=...)} mặc định chấm EMA; 
 \texttt{fid\_eval\_model}, adapter sẽ log thêm
 \texttt{FID-4K/model (cfg=...)} cho online model mà không thay metric EMA mặc
 định.
+
+Trên local trainer \texttt{src/train\_stage1\_rae.py}, block \texttt{eval} dùng
+\texttt{data\_path}, \texttt{batch\_size}, \texttt{num\_workers}, và
+\texttt{max\_batches} cho validation reconstructions. Nếu cung cấp thêm
+\texttt{fid\_ref}, trainer còn chạy reconstruction FID với các key dùng chung
+\texttt{fid\_every}, \texttt{fid\_batch\_size}, \texttt{fid\_device}, và
+\texttt{fid\_num\_threads}; ở đường này \texttt{fid\_every} được tính theo epoch.
 
 \subsection{Override từ CLI}
 

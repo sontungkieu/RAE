@@ -146,14 +146,29 @@ Entry point này dành cho local GPU hoặc Kaggle GPU, không đi qua TPU/XLA. 
 \texttt{L1}, \texttt{LPIPS}, GAN loss, latent RMS/variance, learning rate, grad
 norm, cùng ảnh reconstruction train/val lên wandb. Nếu
 \texttt{training.train\_encoder=true}, script sẽ mở train DINOv2 và dùng
-\texttt{training.encoder\_lr} riêng cho encoder.
+\texttt{training.encoder\_lr} riêng cho encoder. Trên host nhiều GPU, cùng
+entry point này có thể chạy qua \texttt{torchrun}; khi đó
+\texttt{training.batch\_size} được hiểu là micro-batch mỗi process, còn
+\texttt{training.grad\_accum\_steps} mở rộng effective batch thêm một lớp nữa.
+
+\begin{lstlisting}[style=rae]
+uv run torchrun --standalone --nproc_per_node=2 src/train_stage1_rae.py \
+  --config configs/stage1/training/DINOv2-B_decXL.yaml \
+  --train-data-path /path/to/train_imagefolder \
+  --val-data-path /path/to/val_imagefolder \
+  --results-dir results_stage1 \
+  --exp-name tunedinov2-stage1-ddp \
+  --wandb \
+  --wandb-project TuneDinoV2
+\end{lstlisting}
 
 Repo cũng ship sẵn hai notebook Kaggle GPU bọc quanh trainer này:
 \texttt{tunedinov2-stage1-scratch-kaggle.ipynb} cho decoder-from-scratch và
 \texttt{tunedinov2-stage1-finetune-dinov2-kaggle.ipynb} cho finetune DINOv2.
-Notebook finetune DINOv2 còn tự dò binary \texttt{uv} từ
-\texttt{\~/.local/bin} khi session Kaggle GPU không tự nhét \texttt{uv} vào
-\texttt{PATH}. Nếu cần refresh lại cả hai notebook từ template, chạy thêm
+Hai notebook này giờ đều tự dò binary \texttt{uv} từ \texttt{PATH},
+\texttt{\~/.local/bin}, hoặc \texttt{/usr/local/bin}; nếu session Kaggle lộ ra
+nhiều GPU thì chúng tự chuyển từ \texttt{uv run python} sang
+\texttt{uv run torchrun}. Nếu cần refresh lại cả hai notebook từ template, chạy thêm
 \texttt{python3 scripts/generate\_tunedinov2\_notebooks.py}.
 
 \subsection{Huấn luyện Stage 2 trên TPU bằng TorchXLA}
@@ -294,6 +309,12 @@ Trên đường JAX, metric \texttt{FID-4K (cfg=...)} mặc định vẫn chấm
 \texttt{fid\_eval\_model}, adapter sẽ log thêm metric riêng
 \texttt{FID-4K/model (cfg=...)} cho online model để bạn đối chiếu trực tiếp với
 panel \texttt{network\_samples}.
+
+Riêng local trainer \texttt{src/train\_stage1\_rae.py} cũng có reconstruction
+FID cho validation reconstructions khi bật \texttt{eval.fid\_ref}. Đường này
+chạy trên rank 0, log \texttt{val/fid}, \texttt{val/fid\_num\_samples}, và
+\texttt{val/fid\_duration\_sec}; \texttt{fid\_every} ở đây được hiểu theo epoch,
+không phải optimizer step.
 
 \subsection{Sampling Stage 2}
 

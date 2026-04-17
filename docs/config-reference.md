@@ -392,6 +392,9 @@ python3 src_jax/train.py \
 For `src/train_stage1_rae.py`, the same `training` block additionally uses:
 
 - `batch_size`: per-step batch size on the local GPU
+- `grad_accum_steps`: number of micro-batches accumulated before each optimizer
+  step; effective batch size becomes
+  `batch_size * world_size * grad_accum_steps`
 - `image_size`: decode target size before reconstruction losses
 - `precision`: one of `fp32`, `fp16`, or `bf16`
 - `image_log_every`: cadence for writing preview PNGs and W&B image panels
@@ -539,6 +542,17 @@ On the JAX path, the default `FID-4K (cfg=...)` series follows EMA. When
 `fid_eval_model: true`, `src_jax/train.py` also logs a separate
 `FID-4K/model (cfg=...)` series for the online model while keeping the default
 EMA metric unchanged.
+
+For `src/train_stage1_rae.py`, only the shared subset is used:
+
+- `fid_ref`: optional reference stats for reconstruction FID
+- `fid_every`: epoch cadence, not optimizer-step cadence
+- `fid_batch_size`: host-side Inception batch size
+- `fid_device`: `cpu`, `cuda`, or `auto`
+- `fid_num_threads`: optional CPU thread count for host-side scoring
+
+The local Stage 1 trainer runs this FID on validation reconstructions from rank
+0 only and logs `val/fid`, `val/fid_num_samples`, and `val/fid_duration_sec`.
 
 ## Example Stage 2 Training Config Skeleton
 

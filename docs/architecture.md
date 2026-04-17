@@ -107,8 +107,9 @@ the TPU loop.
 
 - [src/train_stage1_rae.py](../src/train_stage1_rae.py): local
   PyTorch/CUDA Stage 1 trainer for adversarial decoder training, validation,
-  checkpointing, preview PNG export, W&B logging, and optional DINOv2 encoder
-  finetuning.
+  checkpointing, preview PNG export, W&B logging, `torchrun`-driven DDP,
+  gradient accumulation, optional reconstruction FID, and optional DINOv2
+  encoder finetuning.
 - [src/train.py](../src/train.py): Stage 2 TPU training, EMA,
   checkpointing, wandb logging, validation loss, preview sampling, and optional
   host-side FID.

@@ -17,6 +17,7 @@ training:
   epochs: 16
   ema_decay: 0.9978
   batch_size: 64 # per-proc bs --> make sure total bs is 512
+  grad_accum_steps: 1
   num_workers: 8
   clip_grad: 0.0
   log_interval: 100

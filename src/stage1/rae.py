@@ -108,7 +108,9 @@ class RAE(nn.Module):
         x_rec = x_rec * self.encoder_std.to(x_rec.device) + self.encoder_mean.to(x_rec.device)
         return x_rec
     
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
+    def forward(self, x: torch.Tensor, return_latents: bool = False):
         z = self.encode(x)
         x_rec = self.decode(z)
+        if return_latents:
+            return z, x_rec
         return x_rec

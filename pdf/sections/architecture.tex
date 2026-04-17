@@ -66,7 +66,8 @@ Hành vi chính:
 
 Repo giờ cũng có entrypoint \texttt{src/train\_stage1\_rae.py} cho huấn luyện
 Stage 1 trên local GPU / Kaggle GPU. Script này ghép lại \texttt{RAE},
-\texttt{LPIPS}, DINO discriminator, checkpointing, preview PNG, và log wandb để
+\texttt{LPIPS}, DINO discriminator, checkpointing, preview PNG, log wandb,
+\texttt{torchrun}-style DDP, gradient accumulation, và reconstruction FID để
 phục vụ cả decoder-from-scratch lẫn finetune DINOv2.
 
 Ở đường JAX, \texttt{src\_jax/stage1\_runtime.py} không tự viết lại toàn bộ RAE

@@ -175,7 +175,7 @@ def _config_cell(*, mode: str) -> str:
         lr = "2.0e-4"
         encoder_lr = "2.0e-5"
         epochs = 20
-        batch_size = 16
+        batch_size = 8
         group = "stage1-scratch"
         tags = "stage1,mode:scratch,encoder:frozen,decoder:random,project:TuneDinoV2"
         exp_prefix = "TuneDinoV2-stage1-scratch"
@@ -187,7 +187,7 @@ def _config_cell(*, mode: str) -> str:
         lr = "1.0e-4"
         encoder_lr = "1.0e-5"
         epochs = 12
-        batch_size = 8
+        batch_size = 4
         group = "stage1-finetune-dino"
         tags = "stage1,mode:finetune,encoder:trainable,decoder:imagenet_init,project:TuneDinoV2"
         exp_prefix = "TuneDinoV2-stage1-finetune-dino"
@@ -216,8 +216,16 @@ def _config_cell(*, mode: str) -> str:
     wandb_group = "{group}"
     wandb_tags = "{tags}"
     stage1_ckpt_path = None  # set to an existing Stage 1 checkpoint to continue from your best run
+    grad_accum_steps = 1      # accumulation on top of the per-GPU micro batch
+    fid_ref_path = None       # optional reconstruction FID reference stats (.npz or .pkl)
+    fid_every = 1             # epoch cadence when fid_ref_path is set
+    fid_batch_size = 64
+    fid_device = "auto"
+    fid_num_threads = None
 
     stage1_ckpt_yaml = "null" if stage1_ckpt_path is None else f"'{{stage1_ckpt_path}}'"
+    fid_ref_yaml = "null" if fid_ref_path is None else f"'{{fid_ref_path}}'"
+    fid_device_yaml = f"'{{fid_device}}'"
     config_text = textwrap.dedent(
         f\"\"\"
         stage_1:
@@ -239,6 +247,7 @@ def _config_cell(*, mode: str) -> str:
           global_seed: 0
           epochs: {epochs}
           batch_size: {batch_size}
+          grad_accum_steps: {{grad_accum_steps}}
           num_workers: 4
           image_size: 256
           precision: fp16
@@ -303,6 +312,11 @@ def _config_cell(*, mode: str) -> str:
           batch_size: {batch_size}
           num_workers: 2
           max_batches: 50
+          fid_ref: {{fid_ref_yaml}}
+          fid_every: {{fid_every}}
+          fid_batch_size: {{fid_batch_size}}
+          fid_device: {{fid_device_yaml}}
+          fid_num_threads: {{fid_num_threads}}
         \"\"\"
     ).strip() + "\\n"
     config_path.write_text(config_text, encoding="utf-8")
@@ -331,16 +345,29 @@ def _train_cell(*, robust_uv: bool) -> str:
         import json
         import os
         import subprocess
+        import torch
 
         __UV_INIT__
         env = os.environ.copy()
         env["WANDB_ENTITY"] = WANDB_ENTITY
         env["PROJECT"] = PROJECT
+        env.setdefault("PYTORCH_CUDA_ALLOC_CONF", "expandable_segments:True")
+        env.setdefault("OMP_NUM_THREADS", "1")
 
-        cmd = [
-            UV_BIN,
-            "run",
-            "python",
+        visible_gpus = torch.cuda.device_count()
+        launcher = [UV_BIN, "run"]
+        if visible_gpus > 1:
+            launcher.extend(
+                [
+                    "torchrun",
+                    "--standalone",
+                    f"--nproc_per_node={visible_gpus}",
+                ]
+            )
+        else:
+            launcher.extend(["python"])
+
+        cmd = launcher + [
             "src/train_stage1_rae.py",
             "--config",
             config_path.as_posix(),
@@ -358,6 +385,8 @@ def _train_cell(*, robust_uv: bool) -> str:
             "--wandb-tags",
             wandb_tags,
         ]
+        print("Launching Stage 1 trainer with", visible_gpus, "visible GPU(s)")
+        print("Command:", cmd)
         subprocess.run(cmd, check=True, cwd=repo_root, env=env)
 
         workdir = results_dir / run_info["exp_name"]
@@ -373,18 +402,6 @@ def _train_cell(*, robust_uv: bool) -> str:
 
 
 def _bootstrap_cell(*, robust_uv: bool) -> str:
-    if not robust_uv:
-        return textwrap.dedent(
-            f"""
-            %cd /kaggle/working
-            !rm -rf RAE
-            !git clone {REPO_URL}
-            %cd /kaggle/working/RAE
-            !curl -LsSf https://astral.sh/uv/install.sh | sh
-            !ln -sf /root/.local/bin/uv /usr/local/bin/uv
-            """
-        ).strip()
-
     return textwrap.dedent(
         f"""
         %cd /kaggle/working
@@ -421,20 +438,6 @@ def _bootstrap_cell(*, robust_uv: bool) -> str:
 
 
 def _sync_cell(*, robust_uv: bool) -> str:
-    if not robust_uv:
-        return textwrap.dedent(
-            """
-            import os
-
-            os.environ["UV_PROJECT_ENVIRONMENT"] = "/tmp/.venv"
-            os.environ["UV_CACHE_DIR"] = "/tmp/uv-cache"
-
-            !uv sync -q
-            !nvidia-smi
-            print("Repo dependencies are synced into /tmp/.venv")
-            """
-        ).strip()
-
     return textwrap.dedent(
         """
         import os
@@ -476,7 +479,7 @@ def _post_train_cell() -> str:
 
 def build_notebook(*, mode: str) -> dict:
     include_decoder = mode != "scratch"
-    robust_uv = mode == "finetune"
+    robust_uv = True
     if mode == "scratch":
         title = "# TuneDinoV2 Stage 1 Kaggle Notebook (From Scratch)"
         description = """
@@ -485,7 +488,9 @@ Notebook này chạy Stage 1 trên Kaggle GPU theo hướng train decoder từ �
 - dùng encoder DINOv2-with-registers làm backbone Stage 1;
 - không nạp `pretrained_decoder_path`, để decoder khởi tạo ngẫu nhiên;
 - giữ encoder frozen;
-- log đầy đủ `L1`, `LPIPS`, GAN losses, latent stats, learning rate, grad norm, ảnh reconstruction lên W&B project `TuneDinoV2`.
+- tự dò binary `uv`, tự chuyển sang `torchrun` khi session Kaggle có nhiều GPU, và hỗ trợ `grad_accum_steps`;
+- có thể bật reconstruction FID bằng `fid_ref_path`;
+- log đầy đủ `L1`, `LPIPS`, `PSNR`, GAN losses, latent stats, learning rate, grad norm, reconstruction FID, ảnh reconstruction lên W&B project `TuneDinoV2`.
 
 Notebook hỗ trợ cả `CelebA` và `CelebA-HQ` bằng biến `dataset_name` ở cell cấu hình.
 """
@@ -497,7 +502,9 @@ Notebook này chạy Stage 1 trên Kaggle GPU theo hướng finetune DINOv2:
 - nạp decoder ImageNet DINOv2 làm khởi tạo;
 - cho phép gắn thêm `stage1_ckpt_path` nếu bạn đã có checkpoint Stage 1 cũ;
 - mở train encoder DINOv2 với `encoder_lr` nhỏ hơn decoder;
-- log đầy đủ `L1`, `LPIPS`, GAN losses, latent stats, learning rate, grad norm, ảnh reconstruction lên W&B project `TuneDinoV2`.
+- tự dò binary `uv`, tự chuyển sang `torchrun` khi session Kaggle có nhiều GPU, và hỗ trợ `grad_accum_steps`;
+- có thể bật reconstruction FID bằng `fid_ref_path`;
+- log đầy đủ `L1`, `LPIPS`, `PSNR`, GAN losses, latent stats, learning rate, grad norm, reconstruction FID, ảnh reconstruction lên W&B project `TuneDinoV2`.
 
 Notebook hỗ trợ cả `CelebA` và `CelebA-HQ` bằng biến `dataset_name` ở cell cấu hình.
 """

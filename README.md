@@ -38,8 +38,8 @@ Use the docs folder as the detailed guide for this branch:
 - [raes-jax-celebahq-kaggle-tpuv5e8-sitdh-b-moe1.ipynb](raes-jax-celebahq-kaggle-tpuv5e8-sitdh-b-moe1.ipynb): CelebA-HQ TPU `v5e-8` notebook for the `SiTDH-B + moe1` recipe, now also building an explicit `pyramid_16k` source artifact as `celebahq256_source_gmm_pyr16k.npz`
 - [raes-jax-celebahq-kaggle-tpuv5e8-sitdh-b-moe1-resume.ipynb](raes-jax-celebahq-kaggle-tpuv5e8-sitdh-b-moe1-resume.ipynb): resume-only CelebA-HQ TPU notebook for the `SiTDH-B + moe1` runs, cloning the newest checkpoint into a fresh timestamped resume workdir with a fresh `wandb_run.json` while requiring the persisted `celebahq256_source_gmm_pyr16k.npz` artifact
 - [download-dinov2-with-registers-base-kaggle.ipynb](download-dinov2-with-registers-base-kaggle.ipynb): utility notebook that snapshots `facebook/dinov2-with-registers-base` into `/kaggle/working/pretrained`, verifies it with `local_files_only=True`, and prints the exact local config snippet to paste into `sitdh` configs
-- [tunedinov2-stage1-scratch-kaggle.ipynb](tunedinov2-stage1-scratch-kaggle.ipynb): Kaggle GPU notebook that prepares a CelebA or CelebA-HQ `ImageFolder`, writes a Stage 1 config, trains the ViT decoder from scratch with a frozen DINOv2 encoder, and logs the run to W&B project `TuneDinoV2`
-- [tunedinov2-stage1-finetune-dinov2-kaggle.ipynb](tunedinov2-stage1-finetune-dinov2-kaggle.ipynb): Kaggle GPU notebook that initializes from the ImageNet DINOv2 decoder or an existing Stage 1 checkpoint, unfreezes the DINOv2 encoder, auto-resolves the installed `uv` binary when Kaggle does not inject it into `PATH`, and logs the finetuning run to W&B project `TuneDinoV2`
+- [tunedinov2-stage1-scratch-kaggle.ipynb](tunedinov2-stage1-scratch-kaggle.ipynb): Kaggle GPU notebook that prepares a CelebA or CelebA-HQ `ImageFolder`, writes a Stage 1 config, auto-resolves the installed `uv` binary, launches `torchrun` when Kaggle exposes multiple GPUs, and trains the ViT decoder from scratch with optional reconstruction FID logging to W&B project `TuneDinoV2`
+- [tunedinov2-stage1-finetune-dinov2-kaggle.ipynb](tunedinov2-stage1-finetune-dinov2-kaggle.ipynb): Kaggle GPU notebook that initializes from the ImageNet DINOv2 decoder or an existing Stage 1 checkpoint, unfreezes the DINOv2 encoder, auto-resolves the installed `uv` binary when Kaggle does not inject it into `PATH`, launches `torchrun` on multi-GPU sessions, and logs finetuning plus optional reconstruction FID to W&B project `TuneDinoV2`
 
 The shipped hand-maintained Kaggle notebooks on this branch now only bootstrap
 the `WANDB2` secret for W&B authentication, while generated ablation notebooks
@@ -208,6 +208,22 @@ uv run python src/train_stage1_rae.py \
 The trainer writes `checkpoints/last.pt`, `checkpoints/best.pt`, PNG preview
 grids under `samples/`, and logs Stage 1 reconstruction losses, GAN losses,
 latent stats, learning rates, grad norms, and train/val reconstructions to W&B.
+For multi-GPU hosts, launch the same entrypoint through `torchrun`:
+
+```bash
+uv run torchrun --standalone --nproc_per_node=2 src/train_stage1_rae.py \
+  --config configs/stage1/training/DINOv2-B_decXL.yaml \
+  --train-data-path /path/to/train_imagefolder \
+  --val-data-path /path/to/val_imagefolder \
+  --results-dir results_stage1 \
+  --exp-name tunedinov2-stage1-ddp \
+  --wandb \
+  --wandb-project TuneDinoV2
+```
+
+`training.batch_size` is the per-process micro-batch. The trainer now also
+supports `training.grad_accum_steps` for a larger effective batch size and
+`eval.fid_ref` for optional reconstruction FID on the validation reconstructions.
 
 ### Sampling/Reconstruction
 
@@ -425,7 +441,7 @@ Key behavior:
 - `src_jax/moe1/` plus `src_jax/backend_overlay/diffuse_nnx/interfaces/continuous_moe1.py` implement the learned source stack. On this branch the CNN-MoE runs directly on the RAE latent layout `B x 16 x 16 x 768`, so the current default source recipe keeps a wider trunk at `hidden_channels=256` while otherwise following the newer `shortcut-models@moe1` knobs more closely: `condition_dim=16`, `router_temperature=2.0`, `balance_loss_weight=0.1`, `entropy_loss_weight=1.0e-2`, and `var_kl_loss_weight=1.0`. The same path also logs `train_source_logvar_mean` and `train_source_var_mean`.
 - `ENTITY` / `PROJECT` / `WANDB_KEY` are bridged to the `WANDB_*` variables expected by the JAX backend.
 - `src_jax/train.py` also accepts `--wandb-group` and `--wandb-tags`, which the new DH ablation generator uses to keep all `pyramid_16k` runs under one W&B group while still attaching per-run metadata tags.
-- `src/train_stage1_rae.py` is the local PyTorch/CUDA Stage 1 trainer for adversarial decoder training. It reads `stage_1`, `training`, `gan`, optional `data`, and optional `eval`; writes `last.pt` / `best.pt` checkpoints plus preview PNGs; and can either keep the DINOv2 encoder frozen or unfreeze it with a separate `training.encoder_lr`.
+- `src/train_stage1_rae.py` is the local PyTorch/CUDA Stage 1 trainer for adversarial decoder training. It reads `stage_1`, `training`, `gan`, optional `data`, and optional `eval`; writes `last.pt` / `best.pt` checkpoints plus preview PNGs; supports `torchrun`-style DDP, `training.grad_accum_steps`, and optional reconstruction FID through `eval.fid_ref`; and can either keep the DINOv2 encoder frozen or unfreeze it with a separate `training.encoder_lr`.
 - `scripts/generate_tunedinov2_notebooks.py` is the small template generator that rewrites `tunedinov2-stage1-scratch-kaggle.ipynb` and `tunedinov2-stage1-finetune-dinov2-kaggle.ipynb` from one maintained source.
 - `--hf-repo-id` on `src_jax/train.py` uploads the finished workdir directly to Hugging Face.
 - `src_jax/build_fid_stats.py` builds backend-native `fid_ref` files with the same Flax Inception detector used by JAX online FID.
@@ -440,8 +456,8 @@ Key behavior:
 - `raes-jax-celeba-kaggle-tpuv5e8-sitdh-b-moe1-resume.ipynb` is the resume-only Kaggle TPU notebook for the latest `CelebA256_SiTDH-B_DINOv2-B_moe1_jax_tpuv5e8-*` Orbax workdir, keeps the persisted `celeba256_source_gmm_pyr16k.npz` artifact in place, copies the newest `checkpoint_*` into a new timestamped resume workdir, writes a fresh `wandb_run.json` with a new run ID, and keeps the original experiment name for lineage.
 - For numbered DH ablations on Kaggle, run `python3 scripts/generate_ablation_notebooks.py --spec configs/ablation/celeba_sitdh_moe1_pyr16k.yaml --overwrite`. The generator materializes `generated_notebooks/sitdh_moe1_pyr16k/*.ipynb`, pins every run to `pyramid_16k`, switches generated notebooks to the Kaggle secret `WANDB_Tung`, injects `--wandb-group/--wandb-tags` metadata so the resulting runs land under the shared W&B group `celeba-sitdh-moe1-pyr16k-ablation`, and writes the `PYCFG` cell with precomputed path variables such as `celeba_val_path` so the emitted config script stays valid Python even after manual spec edits. The checked-in spec now carries runs `00` through `07`, where the new `07` variant uses `condition_dim=32` and `hidden_channels=128`.
 - Branch này cũng giữ song song bộ notebook TPU `moe1` cho CelebA-HQ: `raes-jax-celebahq-kaggle-tpuv5e8-sitdh-b-moe1.ipynb` và `raes-jax-celebahq-kaggle-tpuv5e8-sitdh-b-moe1-resume.ipynb`, để cùng chung code learned-source nhưng tách workflow dữ liệu/runs theo pipeline HQ.
-- `tunedinov2-stage1-scratch-kaggle.ipynb` is the shipped Kaggle GPU notebook for Stage 1 decoder training from scratch with a frozen DINOv2 encoder, full W&B logging, and CelebA / CelebA-HQ `ImageFolder` preparation.
-- `tunedinov2-stage1-finetune-dinov2-kaggle.ipynb` is the shipped Kaggle GPU notebook for Stage 1 finetuning with a trainable DINOv2 encoder, optional Stage 1 checkpoint initialization, and full W&B logging to `TuneDinoV2`.
+- `tunedinov2-stage1-scratch-kaggle.ipynb` is the shipped Kaggle GPU notebook for Stage 1 decoder training from scratch with a frozen DINOv2 encoder, safe `uv` bootstrap, automatic `torchrun` launch on multi-GPU sessions, optional reconstruction FID, and CelebA / CelebA-HQ `ImageFolder` preparation.
+- `tunedinov2-stage1-finetune-dinov2-kaggle.ipynb` is the shipped Kaggle GPU notebook for Stage 1 finetuning with a trainable DINOv2 encoder, optional Stage 1 checkpoint initialization, safe `uv` bootstrap, automatic `torchrun` launch on multi-GPU sessions, and optional reconstruction FID logging to `TuneDinoV2`.
 
 Current limitation:
 

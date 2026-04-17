@@ -464,17 +464,36 @@ Key behavior:
 - exports preview PNG grids under `samples/`
 - logs `L1`, `LPIPS`, GAN losses, latent RMS/variance, grad norms, learning
   rates, and train/val reconstructions to W&B
+- supports `torchrun`-style DDP for multi-GPU hosts
+- treats `training.batch_size` as the per-process micro-batch and
+  `training.grad_accum_steps` as additional batch scaling
+- can run reconstruction FID from validation reconstructions when `eval.fid_ref`
+  is configured
 - supports either a frozen encoder or a trainable DINOv2 encoder through
   `training.train_encoder` and `training.encoder_lr`
+
+On a `T4x2` Kaggle session or any other 2-GPU box, launch it as:
+
+```bash
+uv run torchrun --standalone --nproc_per_node=2 src/train_stage1_rae.py \
+  --config configs/stage1/training/DINOv2-B_decXL.yaml \
+  --train-data-path /path/to/train_imagefolder \
+  --val-data-path /path/to/val_imagefolder \
+  --results-dir results_stage1 \
+  --exp-name tunedinov2-stage1-ddp \
+  --wandb \
+  --wandb-project TuneDinoV2
+```
 
 For Kaggle GPU runs, the shipped notebooks
 [../tunedinov2-stage1-scratch-kaggle.ipynb](../tunedinov2-stage1-scratch-kaggle.ipynb)
 and
 [../tunedinov2-stage1-finetune-dinov2-kaggle.ipynb](../tunedinov2-stage1-finetune-dinov2-kaggle.ipynb)
 wrap this same trainer with face-dataset preparation and default W&B project
-`TuneDinoV2`. The finetune-DINO notebook additionally resolves the installed
-`uv` binary from `~/.local/bin` when Kaggle GPU sessions leave `uv` out of
-`PATH`. If you need to refresh both notebooks after editing the template,
+`TuneDinoV2`. Both notebooks now resolve the installed `uv` binary from
+`PATH`, `~/.local/bin`, or `/usr/local/bin`, and they switch from `uv run
+python` to `uv run torchrun --standalone --nproc_per_node=<visible_gpus>` when
+Kaggle exposes more than one GPU. If you need to refresh both notebooks after editing the template,
 run `python3 scripts/generate_tunedinov2_notebooks.py`.
 
 ### Stage 1 Latent Stats on the JAX Path
