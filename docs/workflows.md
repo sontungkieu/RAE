@@ -471,6 +471,8 @@ Key behavior:
   is configured
 - accepts `null` / unset values for optional eval knobs such as
   `eval.max_batches` and `eval.fid_num_threads`
+- reads `RAE_DDP_TIMEOUT_SECONDS` when initializing DDP; raise it if rank 0
+  needs longer validation/FID windows while the other ranks wait at barriers
 - supports either a frozen encoder or a trainable DINOv2 encoder through
   `training.train_encoder` and `training.encoder_lr`
 
@@ -495,7 +497,9 @@ wrap this same trainer with face-dataset preparation and default W&B project
 `TuneDinoV2`. Both notebooks now bootstrap `uv` through `curl ... | sh`,
 prepend `~/.local/bin` to `PATH`, default `grad_accum_steps` to `8`, and switch
 from `uv run python` to `uv run torchrun --standalone
---nproc_per_node=<visible_gpus>` when Kaggle exposes more than one GPU. If you need to refresh both notebooks after editing the template,
+--nproc_per_node=<visible_gpus>` when Kaggle exposes more than one GPU. They
+also export `RAE_DDP_TIMEOUT_SECONDS=7200` by default so rank 0 has a longer
+window for validation or reconstruction FID before NCCL times out. If you need to refresh both notebooks after editing the template,
 run `python3 scripts/generate_tunedinov2_notebooks.py`.
 
 ### Stage 1 Latent Stats on the JAX Path

@@ -168,7 +168,9 @@ Repo cũng ship sẵn hai notebook Kaggle GPU bọc quanh trainer này:
 Hai notebook này giờ đều bootstrap \texttt{uv} qua \texttt{curl ... | sh}, thêm
 \texttt{\~/.local/bin} vào \texttt{PATH}, mặc định
 \texttt{grad\_accum\_steps=8}; nếu session Kaggle lộ ra nhiều GPU thì chúng tự chuyển từ \texttt{uv run python} sang
-\texttt{uv run torchrun}. Các key tùy chọn của phần eval như
+\texttt{uv run torchrun}. Chúng cũng export sẵn
+\texttt{RAE\_DDP\_TIMEOUT\_SECONDS=7200} để rank 0 có thêm thời gian cho
+validation hoặc reconstruction FID trước khi NCCL timeout. Các key tùy chọn của phần eval như
 \texttt{fid\_num\_threads} có thể để \texttt{null}. Nếu cần refresh lại cả hai notebook từ template, chạy thêm
 \texttt{python3 scripts/generate\_tunedinov2\_notebooks.py}.
 

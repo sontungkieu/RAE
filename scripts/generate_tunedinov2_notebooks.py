@@ -354,6 +354,7 @@ def _train_cell(*, robust_uv: bool) -> str:
         env["PROJECT"] = PROJECT
         env.setdefault("PYTORCH_CUDA_ALLOC_CONF", "expandable_segments:True")
         env.setdefault("OMP_NUM_THREADS", "1")
+        env.setdefault("RAE_DDP_TIMEOUT_SECONDS", "7200")
 
         visible_gpus = torch.cuda.device_count()
         launcher = ["uv", "run"]
@@ -387,6 +388,7 @@ def _train_cell(*, robust_uv: bool) -> str:
             wandb_tags,
         ]
         print("Launching Stage 1 trainer with", visible_gpus, "visible GPU(s)")
+        print("DDP timeout (seconds):", env["RAE_DDP_TIMEOUT_SECONDS"])
         print("Command:", cmd)
         subprocess.run(cmd, check=True, cwd=repo_root, env=env)
 

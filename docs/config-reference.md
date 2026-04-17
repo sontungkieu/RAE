@@ -556,6 +556,9 @@ The local Stage 1 trainer runs this FID on validation reconstructions from rank
 Optional Stage 1 eval keys such as `max_batches` and `fid_num_threads` may be
 left unset or written as `null`.
 
+For multi-GPU Stage 1 runs, the trainer additionally honors the environment
+variable `RAE_DDP_TIMEOUT_SECONDS` when calling `init_process_group(...)`.
+
 ## Example Stage 2 Training Config Skeleton
 
 ```yaml

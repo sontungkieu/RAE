@@ -289,6 +289,9 @@ Trên local trainer \texttt{src/train\_stage1\_rae.py}, block \texttt{eval} dùn
 \texttt{fid\_num\_threads}; ở đường này \texttt{fid\_every} được tính theo epoch.
 Các key tùy chọn như \texttt{max\_batches} và \texttt{fid\_num\_threads} có thể
 để trống hoặc ghi \texttt{null}.
+Khi chạy DDP cho Stage 1, trainer còn đọc biến môi trường
+\texttt{RAE\_DDP\_TIMEOUT\_SECONDS} để nới timeout của
+\texttt{init\_process\_group(...)}.
 
 \subsection{Override từ CLI}
 

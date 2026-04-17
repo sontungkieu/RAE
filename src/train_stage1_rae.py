@@ -5,7 +5,7 @@ from collections import deque
 from contextlib import nullcontext
 from copy import deepcopy
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timedelta
 import json
 import math
 import os
@@ -104,9 +104,10 @@ def setup_distributed() -> DistState:
 
     if world_size > 1 and not dist.is_initialized():
         backend = "nccl" if use_cuda else "gloo"
+        timeout_seconds = int(os.environ.get("RAE_DDP_TIMEOUT_SECONDS", "7200"))
         if use_cuda:
             torch.cuda.set_device(local_rank)
-        dist.init_process_group(backend=backend)
+        dist.init_process_group(backend=backend, timeout=timedelta(seconds=timeout_seconds))
 
     if use_cuda:
         device = torch.device("cuda", local_rank if world_size > 1 else 0)

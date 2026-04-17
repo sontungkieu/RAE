@@ -225,7 +225,10 @@ uv run torchrun --standalone --nproc_per_node=2 src/train_stage1_rae.py \
 supports `training.grad_accum_steps` for a larger effective batch size and
 `eval.fid_ref` for optional reconstruction FID on the validation reconstructions.
 Optional eval keys such as `eval.max_batches` and `eval.fid_num_threads` may be
-left unset or written as `null`.
+left unset or written as `null`. On multi-GPU runs, `RAE_DDP_TIMEOUT_SECONDS`
+controls the process-group timeout; the Kaggle notebooks now default it to
+`7200` so rank 0 can spend longer inside validation or reconstruction FID
+without tripping the default NCCL watchdog timeout.
 
 ### Sampling/Reconstruction
 
