@@ -401,8 +401,10 @@ bộ notebook \texttt{moe1} của branch này cũng đã thống nhất về
 \texttt{training.prefetch\_factor=4},
 \texttt{eval.prefetch\_factor=4},
 \texttt{training.log\_rae\_latent\_stats=true}, và
-\texttt{training.log\_activation\_stats=true}; riêng cell build FID stats vẫn giữ
-\texttt{src\_jax/build\_fid\_stats.py --num-workers 32}.
+\texttt{training.log\_activation\_stats=true}; riêng các cell helper phía host
+đã hạ về \texttt{src\_jax/build\_stage1\_stats.py --batch-size 32 --num-workers
+8}, \texttt{src\_jax/build\_fid\_stats.py --num-workers 16}, và
+\texttt{src\_jax/build\_source\_gmm.py --num-workers 16}.
 Nếu cần sinh hàng loạt notebook Kaggle thay vì sửa tay từng bản, chạy
 \texttt{python3 scripts/generate\_ablation\_notebooks.py --spec
 configs/ablation/celeba\_sitdh\_moe1\_pyr16k.yaml --overwrite}. Generator này
@@ -413,7 +415,9 @@ generated sang \texttt{WANDB\_Tung}, và bơm trực tiếp
 \texttt{celeba-sitdh-moe1-pyr16k-ablation}. Cell \texttt{PYCFG} mà generator
 sinh ra cũng materialize sẵn các biến path như \texttt{celeba\_val\_path}
 trước khi ghi YAML, để script Python nhúng trong notebook luôn hợp lệ thay vì
-phụ thuộc vào biểu thức f-string có lồng dấu nháy.
+phụ thuộc vào biểu thức f-string có lồng dấu nháy. Spec commit sẵn hiện có các
+run \texttt{00} tới \texttt{07}; run \texttt{07} mới dùng
+\texttt{condition\_dim=32} và \texttt{hidden\_channels=128}.
 
 Nếu đã có thư mục run Orbax của \texttt{SiTDH-B + moe1} và cần train tiếp, dùng
 notebook \texttt{raes-jax-celeba-kaggle-tpuv5e8-sitdh-b-moe1-resume.ipynb}. Notebook

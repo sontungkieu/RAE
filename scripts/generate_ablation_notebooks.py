@@ -218,7 +218,7 @@ def _render_setup_cell(context: dict[str, Any]) -> str:
         stats_num_workers = 16
         recon_batch_size = 16
         recon_num_workers = 16
-        fid_num_workers = 32
+        fid_num_workers = 16
         recon_limit = 2048  # bỏ limit nếu muốn reconstruct toàn bộ val split
 
         print("repo_root:", repo_root)

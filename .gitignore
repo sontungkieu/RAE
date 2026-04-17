@@ -6,6 +6,7 @@ wandb
 *.zip*
 .vscode/
 AGENTS.md
+.codex
 
 .DS_store
 samples

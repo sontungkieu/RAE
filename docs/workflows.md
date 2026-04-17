@@ -551,8 +551,10 @@ builds `celeba256_source_gmm_pyr16k.npz` via `--feature-extractor pyramid_16k`,
 and keeps the default checkpoint cadence at `170000` steps. Its generated source block uses `condition_dim=16`,
 `hidden_channels=256`, `router_temperature=2.0`,
 `balance_loss_weight=0.1`, `entropy_loss_weight=1.0e-2`, and
-`var_kl_loss_weight=1.0`, while the FID build cell intentionally keeps
-`src_jax/build_fid_stats.py --num-workers 32`. The Stage 2 train/resume cells
+`var_kl_loss_weight=1.0`, while the notebook now lowers the host-side helper
+cells to `src_jax/build_stage1_stats.py --batch-size 32 --num-workers 8`,
+`src_jax/build_fid_stats.py --num-workers 16`, and
+`src_jax/build_source_gmm.py --num-workers 16`. The Stage 2 train/resume cells
 across the shipped `moe1` notebooks now all pin `training.num_workers=16`,
 `training.prefetch_factor=4`, `eval.prefetch_factor=4`,
 `training.log_rae_latent_stats=true`, and
@@ -566,7 +568,9 @@ offline source builder to `pyramid_16k`, swaps generated notebooks to the
 ablation runs land under `celeba-sitdh-moe1-pyr16k-ablation` with per-run tags.
 Its generated `PYCFG` cell also materializes path variables like
 `celeba_val_path` before writing YAML, so the embedded config script stays valid
-Python instead of relying on nested quoted expressions inside an f-string.
+Python instead of relying on nested quoted expressions inside an f-string. The
+checked-in spec currently spans runs `00` through `07`, with the new `07`
+variant using `condition_dim=32` and `hidden_channels=128`.
 
 If you already have an Orbax run directory for `SiTDH-B + moe1` and want to
 continue training from its latest checkpoint, use
